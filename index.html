@@ -10,16 +10,40 @@
 
   <canvas id="game-canvas"></canvas>
 
-  <!-- 上部: ルーム共有UI -->
+  <!-- 上部: 接続状態表示のみ（作成/参加はワールド選択画面で行う） -->
   <div id="room-bar">
     <span class="brand">🌱 AI自律文明 PoC</span>
-    <div class="room-controls">
-      <button id="btn-create-room">ルームを作成</button>
-      <span class="sep">|</span>
-      <input id="input-room-key" type="text" placeholder="ルームキー(6桁)" maxlength="6" />
-      <button id="btn-join-room">参加</button>
+    <span id="room-status">ローカルで動作中</span>
+  </div>
+
+  <!-- 起動時: ワールド選択/作成画面 -->
+  <div id="world-select-screen">
+    <div class="ws-container">
+      <h1>🌱 AI自律文明 PoC</h1>
+      <div class="ws-tabs">
+        <button class="ws-tab active" data-tab="singleplayer">シングルプレイ</button>
+        <button class="ws-tab" data-tab="multiplayer">マルチプレイ</button>
+      </div>
+
+      <div id="ws-tab-singleplayer" class="ws-tab-content active">
+        <div id="ws-world-list" class="ws-list"></div>
+        <div class="ws-create-row">
+          <input id="ws-new-world-name" type="text" placeholder="新しいワールド名" maxlength="20" />
+          <button id="ws-btn-create-world">ワールドを作成</button>
+        </div>
+      </div>
+
+      <div id="ws-tab-multiplayer" class="ws-tab-content">
+        <div id="ws-room-list" class="ws-list"></div>
+        <div class="ws-create-row">
+          <button id="ws-btn-create-room">新規ルーム作成</button>
+          <span class="sep">|</span>
+          <input id="ws-input-room-key" type="text" placeholder="ルームキー(6桁)" maxlength="6" />
+          <button id="ws-btn-join-room">参加</button>
+        </div>
+        <p id="ws-room-status" class="ws-status"></p>
+      </div>
     </div>
-    <span id="room-status">未接続（ローカルで動作中）</span>
   </div>
 
   <!-- 左側: キャラクリエイトパネル -->
@@ -56,12 +80,14 @@
   <!-- PeerJS (P2Pマルチプレイ用) -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 
-  <script src="js/noise.js"></script>
-  <script src="js/mapGen.js"></script>
-  <script src="js/camera.js"></script>
-  <script src="js/spriteGen.js"></script>
-  <script src="js/character.js"></script>
-  <script src="js/room.js"></script>
-  <script src="js/main.js"></script>
+  <script src="./noise.js"></script>
+  <script src="./mapGen.js"></script>
+  <script src="./camera.js"></script>
+  <script src="./spriteGen.js"></script>
+  <script src="./character.js"></script>
+  <script src="./storage.js"></script>
+  <script src="./room.js"></script>
+  <script src="./main.js"></script>
+  <script src="./worldSelect.js"></script>
 </body>
 </html>
