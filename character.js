@@ -21,22 +21,22 @@ function pickEmote(arr) {
 }
 
 class Character {
-  constructor(params, map, x, y) {
+  constructor(params, map, x, y, restore) {
     this.params = params;
     this.map = map;
     this.x = x;
     this.y = y;
-    this.state = STATES.WANDER;
-    this.stamina = 100;
+    this.state = (restore && restore.state) || STATES.WANDER;
+    this.stamina = restore && typeof restore.stamina === 'number' ? restore.stamina : 100;
     this.wanderTarget = null;
     this.wanderTimer = 0;
     this.gatherTarget = null;
     this.gatherTimer = 0;
     this.emote = '';
     this.emoteTimer = 0;
-    this.inventory = { tree: 0, stone: 0 };
+    this.inventory = (restore && restore.inventory) || { tree: 0, stone: 0 };
     this.sprite = buildSpriteCanvas(params);
-    this.facing = 1;
+    this.facing = (restore && restore.facing) || 1;
     this.isRemoteMirror = false; // trueの場合は他プレイヤー(ホスト)からの受信データで描画のみ行う
   }
 
@@ -179,8 +179,21 @@ class Character {
     return false;
   }
 
-  // マルチプレイ同期用にシリアライズ
+  // マルチプレイ同期用にシリアライズ（軽量）
   serialize() {
     return { x: this.x, y: this.y, state: this.state, emote: this.emote, facing: this.facing };
+  }
+
+  // オートセーブ用にシリアライズ（復元に必要な全情報）
+  fullSerialize() {
+    return {
+      params: this.params,
+      x: this.x,
+      y: this.y,
+      state: this.state,
+      stamina: this.stamina,
+      inventory: this.inventory,
+      facing: this.facing,
+    };
   }
 }
