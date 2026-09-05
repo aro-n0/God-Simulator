@@ -1,8 +1,9 @@
 // spriteGen.js
-// 名前・性格プロンプトのテキストを解析し、16x16ドット絵と行動ステータスを自動生成する。
+// 16x16ドット絵のシルエット(テンプレート)・配色パレット・生成/解析ロジック。
+// 外見(ランダム生成/手動カラー)とステータス(プロンプト解析)は分離して扱う。
 
-// テンプレート: . 透明 / H 髪 / S 肌 / E 目 / C 服 / P ズボン・靴 / O アウトライン
-const CHIBI_TEMPLATE = [
+// ベーステンプレート: . 透明 / H 髪 / S 肌 / E 目 / C 服 / P ズボン・靴 / O アウトライン
+const BASE_TEMPLATE = [
   '....HHHHHHHH....',
   '...HHHHHHHHHH...',
   '..HHHHHHHHHHHH..',
@@ -21,34 +22,38 @@ const CHIBI_TEMPLATE = [
   '...OOO....OOO...',
 ];
 
-// 帽子オーバーレイ（先頭数行に重ねる）
-const HAT_OVERLAY = ['...GGGGGGGGGG...', '..GGGGGGGGGGGG..', '..GG........GG..'];
-
-const COLOR_KEYWORDS = {
-  赤: '#c94b4b', あか: '#c94b4b', レッド: '#c94b4b',
-  青: '#4b7bc9', あお: '#4b7bc9', ブルー: '#4b7bc9',
-  緑: '#4fae5e', みどり: '#4fae5e', グリーン: '#4fae5e',
-  黄: '#e0c23c', きいろ: '#e0c23c', イエロー: '#e0c23c',
-  黒: '#2b2b2b', くろ: '#2b2b2b', ブラック: '#2b2b2b',
-  白: '#eeeeee', しろ: '#eeeeee', ホワイト: '#eeeeee',
-  茶: '#8a5a35', ちゃ: '#8a5a35', ブラウン: '#8a5a35',
-  紫: '#8a4fae', むらさき: '#8a4fae', パープル: '#8a4fae',
-  金: '#e6c85c', きん: '#e6c85c', ゴールド: '#e6c85c',
-  銀: '#c9c9d4', ぎん: '#c9c9d4',
-  ピンク: '#e08bb0', 桃: '#e08bb0',
-  オレンジ: '#e08b3c', 橙: '#e08b3c',
+// ヘアスタイルごとの行オーバーライド（シルエットの差分）
+const HAIRSTYLE_OVERRIDES = {
+  short: {},
+  bald: {
+    0: '................',
+    1: '...SSSSSSSSSS...',
+    2: '..SSSSSSSSSSSS..',
+    3: '..SSSSSSSSSSSS..',
+  },
+  long: {
+    8: '..HCCCCCCCCCCH..',
+    9: '.HCCCCCCCCCCCCH.',
+  },
 };
 
-const SKIN_TONES = ['#f2c9a0', '#e0ac7a', '#c98a55', '#8a5a35'];
+const HAT_OVERLAY = ['...GGGGGGGGGG...', '..GGGGGGGGGGGG..', '..GG........GG..'];
+
+// 人間らしい自然な色調のみに制限したパレット（肌・髪）
+const NATURAL_SKIN_TONES = ['#ffe0bd', '#f2c9a0', '#e0ac7a', '#c98a55', '#a86b3c', '#8a5a35', '#6b4226', '#4a2c17'];
+const NATURAL_HAIR_COLORS = ['#1b1b1b', '#3b2b1e', '#5a3d24', '#8a5a35', '#c99b57', '#e6c85c', '#9a4b2b', '#9a9a9a', '#e8e8e8'];
+const CLOTHES_COLOR_CHOICES = ['#4b7bc9', '#4fae5e', '#8a2b2b', '#7a9a4a', '#b08a3c', '#8a4fae', '#c9a13c', '#3c8ac9'];
+const HAT_COLOR_CHOICES = ['#4b3b8a', '#8a2b2b', '#2b2b2b', '#3c6b8a'];
+const HAIRSTYLE_CHOICES = ['short', 'short', 'long', 'long', 'bald'];
 
 const JOB_KEYWORDS = {
-  木こり: { gatherBonus: { tree: 1.6 }, hat: false, clothesColor: '#6b4a2b' },
-  きこり: { gatherBonus: { tree: 1.6 }, hat: false, clothesColor: '#6b4a2b' },
-  魔法使い: { gatherBonus: {}, hat: true, hatColor: '#4b3b8a', clothesColor: '#4b3b8a' },
-  商人: { gatherBonus: {}, hat: false, clothesColor: '#b08a3c' },
-  農民: { gatherBonus: { tree: 1.1, stone: 1.1 }, hat: false, clothesColor: '#7a9a4a' },
-  鉱夫: { gatherBonus: { stone: 1.6 }, hat: false, clothesColor: '#5a5a5a' },
-  兵士: { gatherBonus: {}, hat: false, clothesColor: '#8a2b2b' },
+  木こり: { gatherBonus: { tree: 1.6 } },
+  きこり: { gatherBonus: { tree: 1.6 } },
+  魔法使い: { gatherBonus: {} },
+  商人: { gatherBonus: {} },
+  農民: { gatherBonus: { tree: 1.1, stone: 1.1 } },
+  鉱夫: { gatherBonus: { stone: 1.6 } },
+  兵士: { gatherBonus: {} },
 };
 
 const PERSONALITY_KEYWORDS = {
@@ -62,6 +67,9 @@ const PERSONALITY_KEYWORDS = {
   慎重: { speedMul: 0.85 },
 };
 
+const LIKE_POOL = ['昼寝', 'おしゃべり', '焚き火', '晴れの日', '甘いもの', '散歩', '歌うこと', '星空', '川遊び', '焼き芋'];
+const DISLIKE_POOL = ['雨', '虫', '早起き', '大きな音', '辛いもの', '寒さ', '暑さ', '力仕事', '待つこと', '暗い場所'];
+
 function hashStringToSeed(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
@@ -74,15 +82,35 @@ function pickFromArray(rand, arr) {
   return arr[Math.floor(rand() * arr.length)];
 }
 
-// プロンプトテキストを解析してドット絵パラメータ＋行動ステータスを生成
-function parsePromptToParams(name, prompt) {
-  const seed = hashStringToSeed(name + '::' + prompt);
-  const rand = mulberry32(seed);
-
-  const foundColors = [];
-  for (const key in COLOR_KEYWORDS) {
-    if (prompt.includes(key)) foundColors.push(COLOR_KEYWORDS[key]);
+function pickUniqueRandom(rand, pool, count) {
+  const copy = pool.slice();
+  const result = [];
+  for (let i = 0; i < count && copy.length; i++) {
+    const idx = Math.floor(rand() * copy.length);
+    result.push(copy.splice(idx, 1)[0]);
   }
+  return result;
+}
+
+// 外見（シルエット・配色）をランダム生成する
+function randomizeAppearance(seed) {
+  const rand = mulberry32(seed != null ? seed >>> 0 : Math.floor(Math.random() * 0xffffffff));
+  return {
+    skinTone: pickFromArray(rand, NATURAL_SKIN_TONES),
+    hairColor: pickFromArray(rand, NATURAL_HAIR_COLORS),
+    clothesColor: pickFromArray(rand, CLOTHES_COLOR_CHOICES),
+    hairStyle: pickFromArray(rand, HAIRSTYLE_CHOICES),
+    hasHat: rand() < 0.25,
+    hatColor: pickFromArray(rand, HAT_COLOR_CHOICES),
+  };
+}
+
+// プロンプトテキストから職業・性格ステータスと初期の好き嫌いを解析する（外見は含まない）
+function deriveStatsFromPrompt(name, prompt) {
+  name = name || '名無し';
+  prompt = prompt || '';
+  const seed = hashStringToSeed(name + '::' + prompt + '::' + Date.now());
+  const rand = mulberry32(seed);
 
   let job = null;
   let jobKey = null;
@@ -94,35 +122,31 @@ function parsePromptToParams(name, prompt) {
     }
   }
 
-  const hairColor = foundColors[0] || pickFromArray(rand, ['#3b2b1e', '#8a5a35', '#c94b4b', '#4b3b8a', '#e6c85c', '#2b2b2b']);
-  let clothesColor = foundColors[1] || foundColors[0];
-  if (!clothesColor) clothesColor = (job && job.clothesColor) || pickFromArray(rand, ['#4b7bc9', '#4fae5e', '#8a2b2b', '#7a9a4a', '#b08a3c']);
-
   let personality = { speedMul: 1, restThreshold: 20, gatherEffMul: 1, gatherPersist: 1 };
   for (const key in PERSONALITY_KEYWORDS) {
     if (prompt.includes(key)) personality = Object.assign({}, personality, PERSONALITY_KEYWORDS[key]);
   }
 
-  const skinTone = pickFromArray(rand, SKIN_TONES);
-  const hasHat = !!(job && job.hat) || prompt.includes('帽子') || prompt.includes('魔法');
-  const hatColor = (job && job.hatColor) || pickFromArray(rand, ['#4b3b8a', '#8a2b2b', '#2b2b2b']);
-
   return {
-    name: name || '名無し',
-    prompt: prompt || '',
+    name,
+    prompt,
     seed,
-    hairColor,
-    clothesColor,
-    skinTone,
-    hasHat,
-    hatColor,
     job: jobKey,
     gatherBonus: (job && job.gatherBonus) || {},
     speed: 0.9 * (personality.speedMul || 1),
     restThreshold: personality.restThreshold || 20,
     gatherEffMul: personality.gatherEffMul || 1,
     gatherPersist: personality.gatherPersist || 1,
+    likes: pickUniqueRandom(rand, LIKE_POOL, 1 + Math.floor(rand() * 2)),
+    dislikes: pickUniqueRandom(rand, DISLIKE_POOL, 1 + Math.floor(rand() * 2)),
   };
+}
+
+function getTemplateForStyle(style) {
+  const rows = BASE_TEMPLATE.slice();
+  const overrides = HAIRSTYLE_OVERRIDES[style] || {};
+  for (const idx in overrides) rows[idx] = overrides[idx];
+  return rows;
 }
 
 // パラメータから16x16オフスクリーンcanvasのドット絵を構築
@@ -134,6 +158,7 @@ function buildSpriteCanvas(params) {
   const ctx = cnv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
+  const template = getTemplateForStyle(params.hairStyle || 'short');
   const colorMap = {
     H: params.hairColor,
     S: params.skinTone,
@@ -144,7 +169,7 @@ function buildSpriteCanvas(params) {
   };
 
   for (let y = 0; y < size; y++) {
-    const row = CHIBI_TEMPLATE[y];
+    const row = template[y];
     for (let x = 0; x < size; x++) {
       const ch = row[x];
       const color = colorMap[ch];
@@ -160,7 +185,7 @@ function buildSpriteCanvas(params) {
       const row = HAT_OVERLAY[y];
       for (let x = 0; x < size; x++) {
         if (row[x] === 'G') {
-          ctx.fillStyle = params.hatColor;
+          ctx.fillStyle = params.hatColor || '#2b2b2b';
           ctx.fillRect(x, y, 1, 1);
         }
       }
