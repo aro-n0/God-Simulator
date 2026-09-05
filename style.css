@@ -1,0 +1,215 @@
+* {
+  box-sizing: border-box;
+  font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0a1a2a;
+  width: 100%;
+  height: 100%;
+}
+
+#game-canvas {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: grab;
+  image-rendering: pixelated;
+}
+
+#game-canvas:active {
+  cursor: grabbing;
+}
+
+/* 上部ルームバー */
+#room-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: rgba(15, 25, 35, 0.85);
+  backdrop-filter: blur(4px);
+  border-bottom: 2px solid #2d6a34;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  color: #eee;
+  z-index: 10;
+  font-size: 13px;
+}
+
+#room-bar .brand {
+  font-weight: bold;
+  color: #9fe0a8;
+  white-space: nowrap;
+}
+
+.room-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-controls .sep {
+  color: #555;
+  margin: 0 4px;
+}
+
+#input-room-key {
+  width: 110px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a2a38;
+  color: #fff;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  background: #2d6a34;
+  color: #fff;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+button:hover {
+  background: #3d8a44;
+}
+
+#room-status {
+  margin-left: auto;
+  color: #aad4b0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 左側キャラクリエイトパネル */
+#creator-panel {
+  position: fixed;
+  top: 64px;
+  left: 16px;
+  width: 260px;
+  background: rgba(15, 25, 35, 0.9);
+  border: 2px solid #2d6a34;
+  border-radius: 8px;
+  padding: 16px;
+  color: #eee;
+  z-index: 10;
+  font-size: 13px;
+}
+
+#creator-panel.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+#creator-panel h2 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  color: #9fe0a8;
+}
+
+#creator-panel label {
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  color: #bcd;
+}
+
+#creator-panel input[type="text"],
+#creator-panel textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a2a38;
+  color: #fff;
+  resize: none;
+}
+
+.preview-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+#preview-canvas {
+  width: 72px;
+  height: 72px;
+  image-rendering: pixelated;
+  background: #1a2a38;
+  border: 2px solid #444;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.override-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.override-controls .small {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #bcd;
+}
+
+.override-controls input[type="color"] {
+  width: 32px;
+  height: 20px;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.override-controls .checkbox {
+  justify-content: flex-start;
+}
+
+.stat-preview {
+  margin: 10px 0 0 0;
+  font-size: 11px;
+  color: #f0d080;
+}
+
+.spawn-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  font-size: 13px;
+  background: #4b7bc9;
+}
+
+.spawn-btn:hover {
+  background: #5f8bd9;
+}
+
+#creator-panel hr {
+  border: none;
+  border-top: 1px solid #333;
+  margin: 12px 0;
+}
+
+.hint {
+  font-size: 10px;
+  color: #789;
+  line-height: 1.6;
+  margin: 0;
+}
