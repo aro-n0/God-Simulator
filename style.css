@@ -213,3 +213,155 @@ button:hover {
   line-height: 1.6;
   margin: 0;
 }
+
+/* ワールド選択画面 */
+#world-select-screen {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, #16324a 0%, #081420 70%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-container {
+  width: 520px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  background: rgba(15, 25, 35, 0.95);
+  border: 2px solid #2d6a34;
+  border-radius: 10px;
+  padding: 24px;
+  color: #eee;
+}
+
+.ws-container h1 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  color: #9fe0a8;
+  text-align: center;
+}
+
+.ws-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.ws-tab {
+  flex: 1;
+  background: #1a2a38;
+  color: #aad4b0;
+  padding: 8px;
+}
+
+.ws-tab.active {
+  background: #2d6a34;
+  color: #fff;
+}
+
+.ws-tab-content {
+  display: none;
+}
+
+.ws-tab-content.active {
+  display: block;
+}
+
+.ws-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.ws-empty {
+  color: #789;
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.ws-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a2a38;
+  border: 1px solid #2a3a48;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.ws-item-name {
+  font-weight: bold;
+  color: #fff;
+  font-size: 14px;
+}
+
+.ws-room-key {
+  color: #9fe0a8;
+  font-weight: normal;
+  font-size: 12px;
+}
+
+.ws-item-meta {
+  font-size: 11px;
+  color: #89a;
+  margin-top: 2px;
+}
+
+.ws-item-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ws-play-btn,
+.ws-reconnect-btn {
+  background: #4b7bc9;
+}
+
+.ws-play-btn:hover,
+.ws-reconnect-btn:hover {
+  background: #5f8bd9;
+}
+
+.ws-delete-btn,
+.ws-delete-room-btn {
+  background: #8a2b2b;
+}
+
+.ws-delete-btn:hover,
+.ws-delete-room-btn:hover {
+  background: #a83b3b;
+}
+
+.ws-create-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-create-row input[type="text"] {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1a2a38;
+  color: #fff;
+}
+
+.ws-create-row #ws-btn-create-world {
+  white-space: nowrap;
+}
+
+.ws-status {
+  font-size: 12px;
+  color: #aad4b0;
+  margin-top: 8px;
+  min-height: 14px;
+}
