@@ -1,5 +1,5 @@
 // character.js
-// 各キャラクターの自律行動ステートマシンと吹き出し演出。
+// 各キャラクターの自律行動ステートマシン、吹き出し演出、好き嫌い/性格の動的変化。
 
 const STATES = {
   WANDER: 'WANDER',
@@ -37,7 +37,14 @@ class Character {
     this.inventory = (restore && restore.inventory) || { tree: 0, stone: 0 };
     this.sprite = buildSpriteCanvas(params);
     this.facing = (restore && restore.facing) || 1;
+    this.affiliation = (restore && restore.affiliation) || '無所属';
     this.isRemoteMirror = false; // trueの場合は他プレイヤー(ホスト)からの受信データで描画のみ行う
+
+    // 性格・好き嫌いの動的変化を判定するためのトラッキング
+    this.gatherStreak = (restore && restore.gatherStreak) || { tree: 0, stone: 0 };
+    this.restStreak = (restore && restore.restStreak) || 0;
+    this.rainExposure = (restore && restore.rainExposure) || 0;
+    this._evolutionCooldown = 5;
   }
 
   distTo(tx, ty) {
@@ -58,9 +65,14 @@ class Character {
     return best;
   }
 
-  update(dt) {
+  // isRaining: マップ全体の天候フラグ（ゲームループから渡される）
+  update(dt, isRaining) {
     if (this.isRemoteMirror) return; // 観測モードでは自前でシミュレーションしない
     this.emoteTimer -= dt;
+
+    const isOutside = this.state !== STATES.REST;
+    if (isRaining && isOutside) this.rainExposure += dt;
+
     switch (this.state) {
       case STATES.WANDER:
         this._updateWander(dt);
@@ -76,6 +88,7 @@ class Character {
         break;
     }
     this.stamina = Math.max(0, Math.min(100, this.stamina));
+    this._checkTraitEvolution(dt);
   }
 
   _setEmote(text) {
@@ -142,9 +155,11 @@ class Character {
     const rate = 0.5 * bonus * this.params.gatherEffMul;
     if (this.gatherTimer > 1 / rate) {
       this.gatherTimer = 0;
+      const type = this.gatherTarget.type;
       this.gatherTarget.amount -= 1;
-      this.inventory[this.gatherTarget.type] = (this.inventory[this.gatherTarget.type] || 0) + 1;
-      if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES['GATHER_' + this.gatherTarget.type] || ['作業中']));
+      this.inventory[type] = (this.inventory[type] || 0) + 1;
+      this.gatherStreak[type] = (this.gatherStreak[type] || 0) + 1;
+      if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES['GATHER_' + type] || ['作業中']));
       if (this.gatherTarget.amount <= 0) {
         this.gatherTarget = null;
         this.state = STATES.WANDER;
@@ -156,6 +171,7 @@ class Character {
 
   _updateRest(dt) {
     this.stamina += dt * 8;
+    this.restStreak += dt;
     if (Math.random() < 0.01) this._setEmote(pickEmote(EMOTES.REST));
     if (this.stamina >= 90) this.state = STATES.WANDER;
   }
@@ -179,6 +195,48 @@ class Character {
     return false;
   }
 
+  // 日常行動の蓄積に応じて「好き・苦手」を追加/変化させる（数秒おきに判定）
+  _checkTraitEvolution(dt) {
+    this._evolutionCooldown -= dt;
+    if (this._evolutionCooldown > 0) return;
+    this._evolutionCooldown = 5;
+
+    const likes = this.params.likes || (this.params.likes = []);
+    const dislikes = this.params.dislikes || (this.params.dislikes = []);
+    const MAX_TAGS = 4;
+
+    if (this.gatherStreak.tree >= 20 && !likes.includes('木を伐ること')) {
+      likes.push('木を伐ること');
+      if (likes.length > MAX_TAGS) likes.shift();
+    }
+    if (this.gatherStreak.stone >= 20 && !likes.includes('石を掘ること')) {
+      likes.push('石を掘ること');
+      if (likes.length > MAX_TAGS) likes.shift();
+    }
+    if (this.restStreak >= 30 && !likes.includes('昼寝')) {
+      likes.push('昼寝');
+      if (likes.length > MAX_TAGS) likes.shift();
+    }
+    if (this.rainExposure >= 15 && !dislikes.includes('雨')) {
+      dislikes.push('雨');
+      if (dislikes.length > MAX_TAGS) dislikes.shift();
+    }
+  }
+
+  // モーダル表示用の「現在の気持ち」
+  getMoodText() {
+    switch (this.state) {
+      case STATES.GATHER:
+        return this.emote || '作業に集中している';
+      case STATES.REST:
+        return this.stamina < 30 ? 'お腹が空いている…' : '休憩している';
+      case STATES.MOVE_TO_TARGET:
+        return '目的地へ向かっている';
+      default:
+        return this.emote || '元気に過ごしている';
+    }
+  }
+
   // マルチプレイ同期用にシリアライズ（軽量）
   serialize() {
     return { x: this.x, y: this.y, state: this.state, emote: this.emote, facing: this.facing };
@@ -194,6 +252,10 @@ class Character {
       stamina: this.stamina,
       inventory: this.inventory,
       facing: this.facing,
+      affiliation: this.affiliation,
+      gatherStreak: this.gatherStreak,
+      restStreak: this.restStreak,
+      rainExposure: this.rainExposure,
     };
   }
 }
