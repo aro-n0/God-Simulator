@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AI自律文明発展ゲーム - PoC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -53,28 +56,60 @@
     <label>名前</label>
     <input id="input-char-name" type="text" placeholder="例: ゲンジ" />
 
-    <label>性格・外見プロンプト</label>
-    <textarea id="input-char-prompt" rows="3" placeholder="例: 頑固な赤髪の木こり"></textarea>
+    <label>性格・外見プロンプト（職業/性格の解析用）</label>
+    <textarea id="input-char-prompt" rows="2" placeholder="例: 頑固な木こり"></textarea>
 
     <div class="preview-row">
       <canvas id="preview-canvas" width="96" height="96"></canvas>
-      <div class="override-controls">
-        <label class="small">髪/主要色 <input id="override-hair-color" type="color" /></label>
-        <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
-        <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
-      </div>
+      <button id="btn-randomize" class="randomize-btn" type="button">🎲 ランダム生成</button>
     </div>
 
-    <p id="stat-preview" class="stat-preview"></p>
+    <label class="small-label">肌の色</label>
+    <div id="skin-swatches" class="swatch-row"></div>
+
+    <label class="small-label">髪の色</label>
+    <div id="hair-swatches" class="swatch-row"></div>
+
+    <div class="override-controls">
+      <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
+      <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
+    </div>
 
     <button id="btn-spawn" class="spawn-btn">この住民をマップに配置</button>
+    <button id="btn-save-library" class="library-save-btn">ライブラリに保存</button>
+
+    <hr />
+    <h3>キャラライブラリ</h3>
+    <div id="library-list" class="ws-list library-list"></div>
 
     <hr />
     <p class="hint">
-      ホイールでズーム / ドラッグでマップ移動<br />
-      キーワード例: 色(赤/青/緑/黒/白/茶/紫/金/銀/ピンク)、職業(木こり/魔法使い/商人/農民/鉱夫/兵士)、
-      性格(頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重)
+      ホイールでズーム/ドラッグでマップ移動（タブレットは2本指でピンチズーム＆パン）<br />
+      キャラをタップすると詳細を表示<br />
+      職業キーワード: 木こり/魔法使い/商人/農民/鉱夫/兵士<br />
+      性格キーワード: 頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重
     </p>
+  </div>
+
+  <!-- ファミコン風キャラ詳細モーダル -->
+  <div id="char-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="char-modal-close" class="famicom-close">×</button>
+      <div class="famicom-modal-body">
+        <canvas id="char-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
+        <div class="famicom-info">
+          <div class="famicom-name" id="char-modal-name">-</div>
+          <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
+          <div class="famicom-row">職業: <span id="char-modal-job">-</span></div>
+          <div class="famicom-row">気持ち: <span id="char-modal-mood">-</span></div>
+          <div class="famicom-row" id="char-modal-stats">-</div>
+        </div>
+      </div>
+      <div class="famicom-tags">
+        <div id="char-modal-likes" class="tag-row"></div>
+        <div id="char-modal-dislikes" class="tag-row"></div>
+      </div>
+    </div>
   </div>
 
   <!-- PeerJS (P2Pマルチプレイ用) -->
