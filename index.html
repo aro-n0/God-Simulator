@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI自律文明発展ゲーム - PoC</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <canvas id="game-canvas"></canvas>
+
+  <!-- 上部: ルーム共有UI -->
+  <div id="room-bar">
+    <span class="brand">🌱 AI自律文明 PoC</span>
+    <div class="room-controls">
+      <button id="btn-create-room">ルームを作成</button>
+      <span class="sep">|</span>
+      <input id="input-room-key" type="text" placeholder="ルームキー(6桁)" maxlength="6" />
+      <button id="btn-join-room">参加</button>
+    </div>
+    <span id="room-status">未接続（ローカルで動作中）</span>
+  </div>
+
+  <!-- 左側: キャラクリエイトパネル -->
+  <div id="creator-panel">
+    <h2>住民を作成</h2>
+
+    <label>名前</label>
+    <input id="input-char-name" type="text" placeholder="例: ゲンジ" />
+
+    <label>性格・外見プロンプト</label>
+    <textarea id="input-char-prompt" rows="3" placeholder="例: 頑固な赤髪の木こり"></textarea>
+
+    <div class="preview-row">
+      <canvas id="preview-canvas" width="96" height="96"></canvas>
+      <div class="override-controls">
+        <label class="small">髪/主要色 <input id="override-hair-color" type="color" /></label>
+        <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
+        <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
+      </div>
+    </div>
+
+    <p id="stat-preview" class="stat-preview"></p>
+
+    <button id="btn-spawn" class="spawn-btn">この住民をマップに配置</button>
+
+    <hr />
+    <p class="hint">
+      ホイールでズーム / ドラッグでマップ移動<br />
+      キーワード例: 色(赤/青/緑/黒/白/茶/紫/金/銀/ピンク)、職業(木こり/魔法使い/商人/農民/鉱夫/兵士)、
+      性格(頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重)
+    </p>
+  </div>
+
+  <!-- PeerJS (P2Pマルチプレイ用) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <script src="js/noise.js"></script>
+  <script src="js/mapGen.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/spriteGen.js"></script>
+  <script src="js/character.js"></script>
+  <script src="js/room.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
