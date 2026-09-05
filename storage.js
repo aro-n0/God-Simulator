@@ -72,3 +72,30 @@ function recordRoom(key, name, role) {
 function deleteRoomHistory(key) {
   saveRoomHistory(loadRoomHistory().filter((r) => r.key !== key));
 }
+
+// キャラクターライブラリ（作成済みキャラの再利用用）
+const LIBRARY_KEY = 'aicivgame_library';
+
+function loadLibrary() {
+  try {
+    return JSON.parse(localStorage.getItem(LIBRARY_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLibraryList(list) {
+  localStorage.setItem(LIBRARY_KEY, JSON.stringify(list));
+}
+
+function saveToLibrary(params) {
+  const list = loadLibrary();
+  const entry = Object.assign({}, params, { libId: 'lib_' + Date.now() + '_' + Math.floor(Math.random() * 1000) });
+  list.push(entry);
+  saveLibraryList(list);
+  return entry;
+}
+
+function deleteFromLibrary(libId) {
+  saveLibraryList(loadLibrary().filter((e) => e.libId !== libId));
+}
