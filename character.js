@@ -108,6 +108,22 @@ class Character {
     this.prayCount = (restore && restore.prayCount) || 0;
     this.affinity = (restore && restore.affinity) || {};
 
+    // 性格(先天性は誕生時に確定・以後不変。後天性は体験により追加/更新される)
+    this.acquiredPersonality = (restore && restore.acquiredPersonality) || [];
+    if (!this.params.personalityTags) this.params.personalityTags = pickInnateTraits();
+    this.dynamicJob = (restore && restore.dynamicJob) || null;
+    this._jobEvalCooldown = 8;
+
+    // 体験トリガー用の行動カウンタ・一時フラグ(aiEngine.jsが参照)
+    this.actionCounts = (restore && restore.actionCounts) || {
+      woodcutting: 0, mining: 0, farming: 0, fishing: 0, cooking: 0,
+      praying: 0, socializing: 0, hunting: 0, tigerHunts: 0, stealing: 0, nightActivity: 0,
+    };
+    this.nightWaterTime = (restore && restore.nightWaterTime) || 0;
+    this.stormHits = 0;
+    this._crisisSurvived = false;
+    this._bigGatherCrit = false;
+
     // 動的変化トラッキング
     this.gatherStreak = (restore && restore.gatherStreak) || { tree: 0, stone: 0, big_tree: 0 };
     this.restStreak = (restore && restore.restStreak) || 0;
@@ -203,6 +219,16 @@ class Character {
     if (ctx.weather === 'rain' || ctx.weather === 'blessed_rain' || ctx.weather === 'storm') {
       if (isOutside) this.rainExposure += dt;
     }
+    if (ctx.weather === 'storm' && isOutside && Math.random() < dt * 0.01) {
+      this.hp = Math.max(0, this.hp - 8);
+      this.stormHits += 1;
+    }
+    if (ctx.isNight && this.state !== STATES.SLEEP) this.actionCounts.nightActivity += dt;
+    if (ctx.isNight && this._isNearWater() && (this.state === STATES.WANDER || this.state === STATES.REST)) {
+      this.nightWaterTime += dt;
+    }
+    if (this.hp < 15) this._crisisFlag = true;
+    if (this._crisisFlag && this.hp > 50) { this._crisisFlag = false; this._crisisSurvived = true; }
 
     // --- 優先度: 睡眠(夜) > 空腹での食事 > 天候での祈り > 通常AI ---
     if (ctx.isNight) {
@@ -245,6 +271,13 @@ class Character {
     this.hp = Math.max(0, Math.min(100, this.hp));
     if (this.hp <= 0) this.isDead = true;
     this._checkTraitEvolution(dt);
+
+    this._jobEvalCooldown -= dt;
+    if (this._jobEvalCooldown <= 0) {
+      this._jobEvalCooldown = 20;
+      const title = evaluateJobTitle(this);
+      if (title) this.dynamicJob = title;
+    }
   }
 
   _startEat() {
@@ -345,6 +378,7 @@ class Character {
         this.gatherTimer = 0;
         crop.stage = 0; crop.timer = 0;
         this.inventory[crop.type] = (this.inventory[crop.type] || 0) + 1;
+        this.actionCounts.farming += 1;
         this.gatherTarget = null;
         this.state = STATES.WANDER;
       }
@@ -359,8 +393,13 @@ class Character {
         this.gatherTimer = 0;
         let drop = null;
         if (target.type === 'sheep') drop = shearAnimal(target);
+        const wasHunt = !drop;
         if (!drop) drop = harvestAnimal(target);
         this.inventory[drop] = (this.inventory[drop] || 0) + 1;
+        if (wasHunt) {
+          this.actionCounts.hunting += 1;
+          if (target.type === 'tiger') this.actionCounts.tigerHunts += 1;
+        }
         if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
       }
       return;
@@ -377,6 +416,13 @@ class Character {
       if (target.amount !== Infinity) target.amount -= 1;
       this.inventory[type] = (this.inventory[type] || 0) + 1;
       if (this.gatherStreak[type] != null) this.gatherStreak[type] += 1;
+      if (type === 'tree' || type === 'big_tree') this.actionCounts.woodcutting += 1;
+      if (type === 'stone') this.actionCounts.mining += 1;
+      if (type === 'ore') {
+        this.actionCounts.mining += 1;
+        if (target.isGiant && Math.random() < 0.1) this._bigGatherCrit = true;
+      }
+      if (type === 'fish') this.actionCounts.fishing += 1;
       if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES['GATHER_' + type] || ['作業中']));
       if (target.amount <= 0) {
         this.gatherTarget = null;
@@ -399,6 +445,7 @@ class Character {
         if (this.inventory[rawKey] <= 0) delete this.inventory[rawKey];
         const cooked = RAW_TO_COOKED[rawKey];
         this.inventory[cooked] = (this.inventory[cooked] || 0) + 1;
+        this.actionCounts.cooking += 1;
         this._setEmote('料理中');
       }
       this._cookedThisRest = true;
@@ -430,21 +477,12 @@ class Character {
     return false;
   }
 
-  // 日常行動の蓄積に応じて「好き・苦手」を追加/変化させる(数秒おきに判定)
+  // 体験に基づく好き・苦手・後天性性格の自由生成をaiEngine.jsへ委譲する(数秒おきに判定)
   _checkTraitEvolution(dt) {
     this._evolutionCooldown -= dt;
     if (this._evolutionCooldown > 0) return;
     this._evolutionCooldown = 5;
-
-    const likes = this.params.likes || (this.params.likes = []);
-    const dislikes = this.params.dislikes || (this.params.dislikes = []);
-    const MAX_TAGS = 4;
-
-    if (this.gatherStreak.tree >= 20 && !likes.includes('木を伐ること')) { likes.push('木を伐ること'); if (likes.length > MAX_TAGS) likes.shift(); }
-    if (this.gatherStreak.big_tree >= 15 && !likes.includes('巨木伐採')) { likes.push('巨木伐採'); if (likes.length > MAX_TAGS) likes.shift(); }
-    if (this.gatherStreak.stone >= 20 && !likes.includes('石を掘ること')) { likes.push('石を掘ること'); if (likes.length > MAX_TAGS) likes.shift(); }
-    if (this.restStreak >= 30 && !likes.includes('昼寝')) { likes.push('昼寝'); if (likes.length > MAX_TAGS) likes.shift(); }
-    if (this.rainExposure >= 15 && !dislikes.includes('雨')) { dislikes.push('雨'); if (dislikes.length > MAX_TAGS) dislikes.shift(); }
+    tryGenerateExperienceTags(this);
   }
 
   // 能力タグ(ステータスから自動導出)
@@ -530,7 +568,8 @@ class Character {
       rainExposure: this.rainExposure, hunger: this.hunger, hp: this.hp, gender: this.gender,
       ageYears: this.ageYears, lifespanYears: this.lifespanYears, languageLevel: this.languageLevel,
       languageProgress: this.languageProgress, partnerId: this.partnerId, titleTags: this.titleTags,
-      prayCount: this.prayCount, affinity: this.affinity,
+      prayCount: this.prayCount, affinity: this.affinity, acquiredPersonality: this.acquiredPersonality,
+      dynamicJob: this.dynamicJob, actionCounts: this.actionCounts, nightWaterTime: this.nightWaterTime,
     };
   }
 }
