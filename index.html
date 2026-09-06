@@ -18,8 +18,8 @@
     <span class="brand">🌱 AI自律文明 PoC</span>
     <button id="btn-open-creator">住民を作成</button>
     <button id="btn-open-roster">キャラ一覧</button>
-    <button id="btn-open-rules">この世界のルール</button>
     <span class="speed-group">
+      <button id="btn-speed-0" class="speed-btn">x0</button>
       <button id="btn-speed-1" class="speed-btn active">x1</button>
       <button id="btn-speed-2" class="speed-btn">x2</button>
       <button id="btn-speed-5" class="speed-btn">x5</button>
@@ -121,16 +121,6 @@
     </div>
   </div>
 
-  <!-- この世界のルール -->
-  <div id="rules-modal" class="famicom-modal">
-    <div class="famicom-modal-box">
-      <button id="rules-modal-close" class="famicom-close">×</button>
-      <h2 class="famicom-title">この世界のルール</h2>
-      <pre id="rules-text-body" class="rules-text"></pre>
-      <table id="rules-behavior-table" class="rules-table"></table>
-    </div>
-  </div>
-
   <!-- ファミコン風キャラ詳細モーダル -->
   <div id="char-modal" class="famicom-modal">
     <div class="famicom-modal-box">
@@ -150,11 +140,13 @@
         </div>
       </div>
       <div class="famicom-tags">
-        <div id="char-modal-ability-tags" class="tag-row"></div>
-        <div id="char-modal-title-tags" class="tag-row"></div>
-        <div id="char-modal-likes" class="tag-row"></div>
-        <div id="char-modal-dislikes" class="tag-row"></div>
-        <div id="char-modal-inventory" class="tag-row"></div>
+        <div class="tag-group"><span class="tag-group-label">先天性性格</span><div id="char-modal-innate-tags" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">後天性性格</span><div id="char-modal-acquired-tags" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">能力</span><div id="char-modal-ability-tags" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">肩書き</span><div id="char-modal-title-tags" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">好きなこと</span><div id="char-modal-likes" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">苦手なこと</span><div id="char-modal-dislikes" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">持ち物</span><div id="char-modal-inventory" class="tag-row"></div></div>
       </div>
     </div>
   </div>
@@ -188,6 +180,8 @@
   <script src="./spriteGen.js"></script>
   <script src="./animals.js"></script>
   <script src="./worldRules.js"></script>
+  <script src="./personalityData.js"></script>
+  <script src="./aiEngine.js"></script>
   <script src="./character.js"></script>
   <script src="./storage.js"></script>
   <script src="./room.js"></script>
