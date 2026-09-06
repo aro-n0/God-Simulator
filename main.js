@@ -125,10 +125,17 @@ class Game {
       big_tree: buildBigTreeIcon(),
       stone: buildRockIcon(),
       ore: buildOreIcon(),
+      giant_tree: buildGiantTreeIcon(),
+      scorched_giant_tree: buildScorchedGiantTreeIcon(),
+      fire: buildFireIcon(),
     };
     this.cropIcons = {};
     ['wheat', 'apple', 'vegetable'].forEach((type) => {
       this.cropIcons[type] = [0, 1, 2, 3].map((stage) => buildCropIcon(type, stage));
+    });
+    this.animalIcons = {};
+    ['chicken', 'cow', 'pig', 'tiger', 'sheep'].forEach((type) => {
+      this.animalIcons[type] = buildAnimalIcon(type);
     });
   }
 
@@ -177,6 +184,7 @@ class Game {
     const hairSwatchContainer = document.getElementById('hair-swatches');
     const clothesColorInput = document.getElementById('override-clothes-color');
     const hatCheckbox = document.getElementById('override-hat');
+    const hatColorInput = document.getElementById('override-hat-color');
 
     let creatorState = Object.assign({}, randomizeAppearance(), rollBaseStats());
 
@@ -195,6 +203,7 @@ class Game {
     const refreshPreview = () => {
       clothesColorInput.value = creatorState.clothesColor;
       hatCheckbox.checked = creatorState.hasHat;
+      hatColorInput.value = creatorState.hatColor;
       renderSwatches(skinSwatchContainer, NATURAL_SKIN_TONES, creatorState.skinTone, (c) => { creatorState.skinTone = c; refreshPreview(); });
       renderSwatches(hairSwatchContainer, NATURAL_HAIR_COLORS, creatorState.hairColor, (c) => { creatorState.hairColor = c; refreshPreview(); });
 
@@ -210,8 +219,16 @@ class Game {
 
     clothesColorInput.addEventListener('input', () => { creatorState.clothesColor = clothesColorInput.value; refreshPreview(); });
     hatCheckbox.addEventListener('change', () => { creatorState.hasHat = hatCheckbox.checked; refreshPreview(); });
+    hatColorInput.addEventListener('input', () => { creatorState.hatColor = hatColorInput.value; refreshPreview(); });
     document.getElementById('btn-randomize').addEventListener('click', () => {
-      creatorState = Object.assign({}, randomizeAppearance(), rollBaseStats());
+      const excludeNames = new Set(this.characters.map((c) => c.params.name).concat(loadLibrary().map((e) => e.name)));
+      const excludeSignatures = new Set(
+        this.characters.map((c) => appearanceSignature(c.params)).concat(loadLibrary().map((e) => appearanceSignature(e)))
+      );
+      const result = randomizeFullCharacter(excludeNames, excludeSignatures);
+      creatorState = Object.assign({}, result.appearance, result.stats);
+      nameInput.value = result.name;
+      promptInput.value = result.prompt;
       refreshPreview();
     });
     refreshPreview();
@@ -291,7 +308,8 @@ class Game {
     document.getElementById('char-modal-close').addEventListener('click', () => this._closeModal('char-modal'));
     document.getElementById('roster-modal-close').addEventListener('click', () => this._closeModal('roster-modal'));
     document.getElementById('rules-modal-close').addEventListener('click', () => this._closeModal('rules-modal'));
-    ['char-modal', 'roster-modal', 'rules-modal', 'creator-modal'].forEach((id) => {
+    document.getElementById('animal-modal-close').addEventListener('click', () => this._closeModal('animal-modal'));
+    ['char-modal', 'roster-modal', 'rules-modal', 'creator-modal', 'animal-modal'].forEach((id) => {
       const modal = document.getElementById(id);
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
     });
@@ -309,6 +327,7 @@ class Game {
   _closeModal(id) {
     document.getElementById(id).classList.remove('open');
     if (id === 'char-modal') this._modalChar = null;
+    if (id === 'animal-modal') this._modalAnimal = null;
   }
 
   _renderRoster() {
@@ -343,12 +362,62 @@ class Game {
     const world = this.camera.screenToWorld(screenX, screenY);
     const tileX = world.x / TILE_SIZE;
     const tileY = world.y / TILE_SIZE;
-    let closest = null, closestDist = Infinity;
+
+    let closestChar = null, closestCharDist = Infinity;
     for (const c of this.characters) {
       const d = Math.hypot(c.x - tileX, c.y - tileY);
-      if (d < 0.7 && d < closestDist) { closest = c; closestDist = d; }
+      if (d < 0.7 && d < closestCharDist) { closestChar = c; closestCharDist = d; }
     }
-    if (closest) this._openCharacterModal(closest);
+    let closestAnimal = null, closestAnimalDist = Infinity;
+    for (const a of this.map.animals) {
+      if (a.amount <= 0) continue;
+      const d = Math.hypot(a.x - tileX, a.y - tileY);
+      if (d < 0.7 && d < closestAnimalDist) { closestAnimal = a; closestAnimalDist = d; }
+    }
+
+    if (closestChar && (!closestAnimal || closestCharDist <= closestAnimalDist)) {
+      this._openCharacterModal(closestChar);
+    } else if (closestAnimal) {
+      this._openAnimalModal(closestAnimal);
+    }
+  }
+
+  _retriggerBubble(el) {
+    el.classList.remove('bubble-pop');
+    void el.offsetWidth; // reflow でアニメーションを再生させる
+    el.classList.add('bubble-pop');
+  }
+
+  _openAnimalModal(a) {
+    this._modalAnimal = a;
+    this._refreshAnimalModal();
+    document.getElementById('animal-modal').classList.add('open');
+  }
+
+  _refreshAnimalModal() {
+    const a = this._modalAnimal;
+    if (!a) return;
+    const spriteCanvas = document.getElementById('animal-modal-sprite');
+    const ctx = spriteCanvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, spriteCanvas.width, spriteCanvas.height);
+    ctx.drawImage(this.animalIcons[a.type], 0, 0, spriteCanvas.width, spriteCanvas.height);
+
+    document.getElementById('animal-modal-name').textContent = getAnimalDisplayName(a.type);
+    document.getElementById('animal-modal-status').textContent = `元気度 ${a.amount}/${a.maxAmount}`;
+
+    const bubble = document.getElementById('animal-modal-mood-bubble');
+    const newMood = getAnimalMood(a);
+    if (bubble.textContent !== newMood) { bubble.textContent = newMood; this._retriggerBubble(bubble); }
+
+    const traitsEl = document.getElementById('animal-modal-traits');
+    traitsEl.innerHTML = '';
+    getAnimalTraits(a.type).forEach((t) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag tag-ability';
+      tag.textContent = `[${t}]`;
+      traitsEl.appendChild(tag);
+    });
   }
 
   _openCharacterModal(c) {
@@ -369,7 +438,9 @@ class Game {
     document.getElementById('char-modal-name').textContent = c.params.name;
     document.getElementById('char-modal-affiliation').textContent = c.affiliation || '無所属';
     document.getElementById('char-modal-job').textContent = c.params.job || 'なし';
-    document.getElementById('char-modal-mood').textContent = c.getMoodText();
+    const bubble = document.getElementById('char-modal-mood-bubble');
+    const newMood = c.getMoodText();
+    if (bubble.textContent !== newMood) { bubble.textContent = newMood; this._retriggerBubble(bubble); }
     document.getElementById('char-modal-basestats').textContent =
       `${c.params.str || '-'} / ${c.params.agi || '-'} / ${c.params.int || '-'} / ${c.params.cha || '-'}`;
     document.getElementById('char-modal-vitals').textContent =
@@ -527,6 +598,10 @@ class Game {
       this.map.updateCrops(dt, weatherEffect.cropGrowthMul);
       this.map.regenerateTrees(dt, weatherEffect.treeRegenMul);
       updateAnimals(this.map, dt);
+      this.map.updateFire(dt);
+      if (this.weather === 'storm' && this.map.giantTreeBurning.size === 0 && !this.map.isGiantTreeFullyScorched()) {
+        if (Math.random() < dt * 0.01) this.map.igniteGiantTree();
+      }
 
       this._socialTimer -= dt;
       if (this._socialTimer <= 0) { this._socialTimer = 3; this._updateSocialSystems(); }
@@ -537,6 +612,9 @@ class Game {
     if (this._modalChar) {
       this._modalRefreshCounter++;
       if (this._modalRefreshCounter % 15 === 0) this._refreshModal();
+    }
+    if (this._modalAnimal) {
+      if (this._modalRefreshCounter % 30 === 0) this._refreshAnimalModal();
     }
     if (document.getElementById('roster-modal').classList.contains('open')) {
       this._modalRefreshCounter++;
@@ -609,15 +687,44 @@ class Game {
       ctx.drawImage(icon, screen.x - ts * 0.4, screen.y - ts * 0.4, ts * 0.8, ts * 0.8);
     }
 
-    // 動物
+    // 動物(種別が一目でわかるドット絵アイコン)
     for (const a of this.map.animals) {
       if (a.amount <= 0) continue;
+      if (a.x < x0 || a.x > x1 || a.y < y0 || a.y > y1) continue;
+      const icon = this.animalIcons[a.type];
+      if (!icon) continue;
       const screen = this.camera.worldToScreen(a.x * TILE_SIZE, a.y * TILE_SIZE);
-      ctx.fillStyle = this._animalColor(a.type);
-      const rad = Math.max(2, ts * 0.22);
-      ctx.beginPath();
-      ctx.arc(screen.x, screen.y, rad, 0, Math.PI * 2);
-      ctx.fill();
+      const iconSize = ts * 0.6;
+      ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize / 2, iconSize, iconSize);
+    }
+
+    // 超巨大樹(燃焼中は延焼タイルを炎アイコンで強調表示。地形色自体は焼失に応じて変化する)
+    if (this.map.giantTreeCenter) {
+      const gt = this.map.giantTreeCenter;
+      if (gt.x + 6 >= x0 && gt.x - 6 <= x1 && gt.y + 6 >= y0 && gt.y - 6 <= y1) {
+        if (this.map.giantTreeBurning.size === 0 && !this.map.isGiantTreeFullyScorched()) {
+          const screen = this.camera.worldToScreen(gt.x * TILE_SIZE + TILE_SIZE / 2, gt.y * TILE_SIZE + TILE_SIZE / 2);
+          const size = ts * 8.2;
+          ctx.drawImage(this.icons.giant_tree, screen.x - size / 2, screen.y - size / 2, size, size);
+        } else {
+          for (const key of this.map.giantTreeBurning.keys()) {
+            const [fx, fy] = key.split(',').map(Number);
+            const screen = this.camera.worldToScreen(fx * TILE_SIZE + TILE_SIZE / 2, fy * TILE_SIZE + TILE_SIZE / 2);
+            const size = ts * 0.9;
+            ctx.drawImage(this.icons.fire, screen.x - size / 2, screen.y - size / 2, size, size);
+          }
+        }
+      }
+    }
+
+    // 大穴(世界に1つの巨大鉱脈)
+    if (this.map.giantHoleCenter) {
+      const gh = this.map.giantHoleCenter;
+      if (gh.x + 6 >= x0 && gh.x - 6 <= x1 && gh.y + 6 >= y0 && gh.y - 6 <= y1) {
+        const screen = this.camera.worldToScreen(gh.x * TILE_SIZE + TILE_SIZE / 2, gh.y * TILE_SIZE + TILE_SIZE / 2);
+        const size = ts * 7.8;
+        ctx.drawImage(this.icons.ore, screen.x - size / 2, screen.y - size / 2, size, size);
+      }
     }
 
     // キャラクター(スプライトを1/4サイズで描画)
@@ -685,16 +792,6 @@ class Game {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  _animalColor(type) {
-    switch (type) {
-      case 'chicken': return '#f0e6c8';
-      case 'cow': return '#e8e8e8';
-      case 'pig': return '#e8a0a8';
-      case 'tiger': return '#e0902c';
-      default: return '#cccccc';
-    }
-  }
-
   _tileColor(tile) {
     switch (tile.type) {
       case TILE_TYPES.SEA: return tile.n < 0.15 ? TILE_COLORS.seaDeep : TILE_COLORS.sea;
@@ -706,7 +803,9 @@ class Game {
       case TILE_TYPES.BIG_FOREST: return TILE_COLORS.big_forest;
       case TILE_TYPES.ROCKY: return TILE_COLORS.rocky;
       case TILE_TYPES.MOUNTAIN: return tile.n > 0.88 ? TILE_COLORS.mountainDark : TILE_COLORS.mountain;
-      case TILE_TYPES.HOLE: return TILE_COLORS.hole;
+      case TILE_TYPES.GIANT_HOLE: return TILE_COLORS.giant_hole;
+      case TILE_TYPES.GIANT_TREE: return TILE_COLORS.giant_tree;
+      case TILE_TYPES.SCORCHED_GIANT_TREE: return TILE_COLORS.scorched_giant_tree;
       default: return '#000000';
     }
   }
