@@ -13,9 +13,18 @@
 
   <canvas id="game-canvas"></canvas>
 
-  <!-- 上部: 接続状態表示のみ（作成/参加はワールド選択画面で行う） -->
+  <!-- 上部バー: ステータス・操作ボタン -->
   <div id="room-bar">
     <span class="brand">🌱 AI自律文明 PoC</span>
+    <button id="btn-open-creator">住民を作成</button>
+    <button id="btn-open-roster">キャラ一覧</button>
+    <button id="btn-open-rules">この世界のルール</button>
+    <span class="speed-group">
+      <button id="btn-speed-1" class="speed-btn active">x1</button>
+      <button id="btn-speed-2" class="speed-btn">x2</button>
+      <button id="btn-speed-5" class="speed-btn">x5</button>
+    </span>
+    <span id="world-clock">☀ 昼 / 1日目</span>
     <span id="room-status">ローカルで動作中</span>
   </div>
 
@@ -49,46 +58,76 @@
     </div>
   </div>
 
-  <!-- 左側: キャラクリエイトパネル -->
-  <div id="creator-panel">
-    <h2>住民を作成</h2>
+  <!-- ファミコン風 住民作成モーダル -->
+  <div id="creator-modal" class="famicom-modal">
+    <div class="famicom-modal-box creator-box">
+      <button id="creator-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title">住民を作成</h2>
 
-    <label>名前</label>
-    <input id="input-char-name" type="text" placeholder="例: ゲンジ" />
+      <div class="creator-columns">
+        <div class="creator-left">
+          <canvas id="preview-canvas" width="112" height="112"></canvas>
+          <button id="btn-randomize" class="randomize-btn" type="button">🎲 ダイスで再生成</button>
 
-    <label>性格・外見プロンプト（職業/性格の解析用）</label>
-    <textarea id="input-char-prompt" rows="2" placeholder="例: 頑固な木こり"></textarea>
+          <div class="stat-bars">
+            <div class="stat-bar-row">STR <div class="stat-bar"><div id="bar-str" class="stat-bar-fill"></div></div><span id="val-str">-</span></div>
+            <div class="stat-bar-row">AGI <div class="stat-bar"><div id="bar-agi" class="stat-bar-fill"></div></div><span id="val-agi">-</span></div>
+            <div class="stat-bar-row">INT <div class="stat-bar"><div id="bar-int" class="stat-bar-fill"></div></div><span id="val-int">-</span></div>
+            <div class="stat-bar-row">CHA <div class="stat-bar"><div id="bar-cha" class="stat-bar-fill"></div></div><span id="val-cha">-</span></div>
+          </div>
+        </div>
 
-    <div class="preview-row">
-      <canvas id="preview-canvas" width="96" height="96"></canvas>
-      <button id="btn-randomize" class="randomize-btn" type="button">🎲 ランダム生成</button>
+        <div class="creator-right">
+          <label>名前</label>
+          <input id="input-char-name" type="text" placeholder="例: ゲンジ" />
+
+          <label>性格・職業プロンプト</label>
+          <textarea id="input-char-prompt" rows="2" placeholder="例: 頑固な木こり"></textarea>
+
+          <label class="small-label">肌の色</label>
+          <div id="skin-swatches" class="swatch-row"></div>
+
+          <label class="small-label">髪の色</label>
+          <div id="hair-swatches" class="swatch-row"></div>
+
+          <div class="override-controls">
+            <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
+            <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
+          </div>
+
+          <p class="hint">
+            職業キーワード: 木こり/魔法使い/商人/農民/鉱夫/兵士/漁師<br />
+            性格キーワード: 頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重
+          </p>
+
+          <button id="btn-spawn" class="spawn-btn">この住民をマップに配置</button>
+          <button id="btn-save-library" class="library-save-btn">ライブラリに保存</button>
+        </div>
+      </div>
+
+      <hr />
+      <h3>キャラライブラリ(保存済みテンプレート)</h3>
+      <div id="library-list" class="ws-list library-list"></div>
     </div>
+  </div>
 
-    <label class="small-label">肌の色</label>
-    <div id="skin-swatches" class="swatch-row"></div>
-
-    <label class="small-label">髪の色</label>
-    <div id="hair-swatches" class="swatch-row"></div>
-
-    <div class="override-controls">
-      <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
-      <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
+  <!-- 作ったキャラクター一覧(現在のワールドに存在する住民) -->
+  <div id="roster-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="roster-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title">住民一覧</h2>
+      <div id="roster-list" class="ws-list roster-list"></div>
     </div>
+  </div>
 
-    <button id="btn-spawn" class="spawn-btn">この住民をマップに配置</button>
-    <button id="btn-save-library" class="library-save-btn">ライブラリに保存</button>
-
-    <hr />
-    <h3>キャラライブラリ</h3>
-    <div id="library-list" class="ws-list library-list"></div>
-
-    <hr />
-    <p class="hint">
-      ホイールでズーム/ドラッグでマップ移動（タブレットは2本指でピンチズーム＆パン）<br />
-      キャラをタップすると詳細を表示<br />
-      職業キーワード: 木こり/魔法使い/商人/農民/鉱夫/兵士<br />
-      性格キーワード: 頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重
-    </p>
+  <!-- この世界のルール -->
+  <div id="rules-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="rules-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title">この世界のルール</h2>
+      <pre id="rules-text-body" class="rules-text"></pre>
+      <table id="rules-behavior-table" class="rules-table"></table>
+    </div>
   </div>
 
   <!-- ファミコン風キャラ詳細モーダル -->
@@ -102,12 +141,17 @@
           <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
           <div class="famicom-row">職業: <span id="char-modal-job">-</span></div>
           <div class="famicom-row">気持ち: <span id="char-modal-mood">-</span></div>
-          <div class="famicom-row" id="char-modal-stats">-</div>
+          <div class="famicom-row">STR/AGI/INT/CHA: <span id="char-modal-basestats">-</span></div>
+          <div class="famicom-row">HP/空腹/疲労: <span id="char-modal-vitals">-</span></div>
+          <div class="famicom-row">年齢/言語Lv: <span id="char-modal-age">-</span></div>
         </div>
       </div>
       <div class="famicom-tags">
+        <div id="char-modal-ability-tags" class="tag-row"></div>
+        <div id="char-modal-title-tags" class="tag-row"></div>
         <div id="char-modal-likes" class="tag-row"></div>
         <div id="char-modal-dislikes" class="tag-row"></div>
+        <div id="char-modal-inventory" class="tag-row"></div>
       </div>
     </div>
   </div>
@@ -119,6 +163,8 @@
   <script src="./mapGen.js"></script>
   <script src="./camera.js"></script>
   <script src="./spriteGen.js"></script>
+  <script src="./animals.js"></script>
+  <script src="./worldRules.js"></script>
   <script src="./character.js"></script>
   <script src="./storage.js"></script>
   <script src="./room.js"></script>
