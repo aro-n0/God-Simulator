@@ -1,6 +1,6 @@
 // mapGen.js
 // パーリン(風)ノイズによる100x100有限マップ生成。外周は強制的に海にして世界の端を作る。
-// 地形: 海/平原/森林/巨大森林/山脈/岩石地帯/砂浜/川/湖/大穴(無限鉱石)。
+// 地形: 海/平原/森林/巨大森林/山脈/岩石地帯/砂浜/川/湖/超巨大樹/大穴(世界に1つずつ)。
 // 資源(木/石/鉱石)・農地(小麦/リンゴ/野菜)・動物の初期配置もここで行う。
 
 const TILE_TYPES = {
@@ -13,7 +13,9 @@ const TILE_TYPES = {
   BIG_FOREST: 'big_forest',
   ROCKY: 'rocky',
   MOUNTAIN: 'mountain',
-  HOLE: 'hole',
+  GIANT_HOLE: 'giant_hole',
+  GIANT_TREE: 'giant_tree',
+  SCORCHED_GIANT_TREE: 'scorched_giant_tree',
 };
 
 const TILE_COLORS = {
@@ -28,13 +30,16 @@ const TILE_COLORS = {
   rocky: '#8a7a6a',
   mountain: '#7d7d7d',
   mountainDark: '#5c5c5c',
-  hole: '#170f0a',
+  giant_hole: '#1a0f08',
+  giant_tree: '#0f3013',
+  scorched_giant_tree: '#2b2420',
 };
 
 const TILE_SIZE = 16; // ワールド座標上の1タイルのピクセル基準サイズ
 
 const CROP_STAGE_DURATION = 12; // 1成長段階に必要な秒数（雨で短縮）
 const CROP_TYPES = ['wheat', 'apple', 'vegetable'];
+const LANDMARK_RADIUS = 3.4; // 巨大ランドマークの半径(タイル)。街1つ分・湖と同等の規模。
 
 class GameMap {
   constructor(seed, width = 100, height = 100) {
@@ -46,6 +51,10 @@ class GameMap {
     this.resources = []; // { x,y,type:'tree'|'big_tree'|'stone'|'ore'|'fish', amount, isWater? }
     this.crops = []; // { x,y,type, stage(0-3), timer }
     this.animals = []; // animals.js が生成/更新する
+    this.giantHoleCenter = null;
+    this.giantTreeCenter = null;
+    this.giantTreeTiles = [];
+    this.giantTreeBurning = new Map(); // key "x,y" -> 残り燃焼時間
     this._generate();
   }
 
@@ -80,9 +89,7 @@ class GameMap {
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const t = this.tiles[y][x];
-        if (t.type === TILE_TYPES.SEA && t.distToEdge > edgeMargin + 6) {
-          t.type = TILE_TYPES.LAKE;
-        }
+        if (t.type === TILE_TYPES.SEA && t.distToEdge > edgeMargin + 6) t.type = TILE_TYPES.LAKE;
       }
     }
 
@@ -103,10 +110,7 @@ class GameMap {
       for (let x = 0; x < this.width; x++) {
         const t = this.tiles[y][x];
         if (t.type !== TILE_TYPES.PLAINS) continue;
-        const neighbors = [
-          this.getTile(x + 1, y), this.getTile(x - 1, y),
-          this.getTile(x, y + 1), this.getTile(x, y - 1),
-        ];
+        const neighbors = [this.getTile(x + 1, y), this.getTile(x - 1, y), this.getTile(x, y + 1), this.getTile(x, y - 1)];
         if (neighbors.some((n2) => n2 && (n2.type === TILE_TYPES.SEA || n2.type === TILE_TYPES.LAKE))) {
           if (rand() < 0.85) t.type = TILE_TYPES.BEACH;
         }
@@ -121,15 +125,9 @@ class GameMap {
       }
     }
 
-    // 大穴(無限鉱石)を平原・岩石地帯に稀に配置
-    for (let y = 0; y < this.height; y++) {
-      for (let x = 0; x < this.width; x++) {
-        const t = this.tiles[y][x];
-        if ((t.type === TILE_TYPES.PLAINS || t.type === TILE_TYPES.ROCKY) && rand() < 0.0015) {
-          t.type = TILE_TYPES.HOLE;
-        }
-      }
-    }
+    // 世界に1つだけの超巨大ランドマーク(大穴・超巨大樹)を配置
+    this._placeGiantHole(rand);
+    this._placeGiantTree(rand);
 
     // 資源・農地・魚・動物の配置
     for (let y = 0; y < this.height; y++) {
@@ -154,29 +152,138 @@ class GameMap {
           case TILE_TYPES.ROCKY:
             if (rand() < 0.12) this.resources.push({ x, y, type: 'stone', amount: 8 + Math.floor(rand() * 8) });
             break;
-          case TILE_TYPES.HOLE:
-            this.resources.push({ x, y, type: 'ore', amount: Infinity });
-            break;
           case TILE_TYPES.PLAINS:
             if (rand() < 0.02) {
               this.crops.push({ x, y, type: CROP_TYPES[Math.floor(rand() * CROP_TYPES.length)], stage: Math.floor(rand() * 2), timer: 0 });
             } else if (rand() < 0.006) {
               this.animals.push(makeAnimal('chicken', x, y));
-            } else if (rand() < 0.01) {
+            } else if (rand() < 0.008) {
               this.animals.push(makeAnimal('cow', x, y));
-            } else if (rand() < 0.01) {
+            } else if (rand() < 0.008) {
               this.animals.push(makeAnimal('pig', x, y));
+            } else if (rand() < 0.008) {
+              this.animals.push(makeAnimal('sheep', x, y));
             }
             break;
           case TILE_TYPES.RIVER:
           case TILE_TYPES.LAKE:
             if (rand() < 0.35) this.resources.push({ x, y, type: 'fish', amount: Infinity, isWater: true });
             break;
-          case TILE_TYPES.FOREST_EDGE: // unused placeholder
-            break;
         }
         if ((t.type === TILE_TYPES.FOREST || t.type === TILE_TYPES.BIG_FOREST) && rand() < 0.0009) {
           this.animals.push(makeAnimal('tiger', x, y));
+        }
+      }
+    }
+  }
+
+  // 陸地(平原/森林)からランドマークの中心を探す。avoidPointがあれば一定距離離す。
+  _findLandmarkCenter(rand, avoidPoint) {
+    for (let i = 0; i < 400; i++) {
+      const x = 10 + Math.floor(rand() * (this.width - 20));
+      const y = 10 + Math.floor(rand() * (this.height - 20));
+      const t = this.getTile(x, y);
+      if (!t) continue;
+      if (t.type !== TILE_TYPES.PLAINS && t.type !== TILE_TYPES.FOREST) continue;
+      if (avoidPoint && Math.hypot(x - avoidPoint.x, y - avoidPoint.y) < 20) continue;
+      return { x, y };
+    }
+    return null;
+  }
+
+  // 大穴(世界に1つ・街1つ分/湖と同等サイズ・無限に鉱石採取可能)
+  _placeGiantHole(rand) {
+    const center = this._findLandmarkCenter(rand, null);
+    if (!center) return;
+    this.giantHoleCenter = center;
+    for (let y = center.y - 5; y <= center.y + 5; y++) {
+      for (let x = center.x - 5; x <= center.x + 5; x++) {
+        const t = this.getTile(x, y);
+        if (!t) continue;
+        if (Math.hypot(x - center.x, y - center.y) <= LANDMARK_RADIUS) t.type = TILE_TYPES.GIANT_HOLE;
+      }
+    }
+    this.resources.push({ x: center.x, y: center.y, type: 'ore', amount: Infinity, isGiant: true });
+  }
+
+  // 超巨大樹(世界に1つ・大穴と同等サイズ・伐採不可だが火で燃え広がる)
+  _placeGiantTree(rand) {
+    const center = this._findLandmarkCenter(rand, this.giantHoleCenter);
+    if (!center) return;
+    this.giantTreeCenter = center;
+    this.giantTreeTiles = [];
+    for (let y = center.y - 5; y <= center.y + 5; y++) {
+      for (let x = center.x - 5; x <= center.x + 5; x++) {
+        const t = this.getTile(x, y);
+        if (!t) continue;
+        if (Math.hypot(x - center.x, y - center.y) <= LANDMARK_RADIUS) {
+          t.type = TILE_TYPES.GIANT_TREE;
+          this.giantTreeTiles.push({ x, y });
+        }
+      }
+    }
+  }
+
+  // 落雷などで超巨大樹に着火する。既に一部炭化している場合は、その境界(延焼前線)から
+  // 再開することで、孤立した未延焼区画が永遠に残らないようにする。
+  igniteGiantTree() {
+    if (!this.giantTreeCenter || this.giantTreeTiles.length === 0) return false;
+    if (this.giantTreeBurning.size > 0) return false;
+
+    const remaining = this.giantTreeTiles.filter((p) => {
+      const t = this.getTile(p.x, p.y);
+      return t && t.type === TILE_TYPES.GIANT_TREE;
+    });
+    if (remaining.length === 0) return false;
+
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const frontier = remaining.filter((p) =>
+      dirs.some(([dx, dy]) => {
+        const nt = this.getTile(p.x + dx, p.y + dy);
+        return nt && nt.type === TILE_TYPES.SCORCHED_GIANT_TREE;
+      })
+    );
+    const ignitionPoints = frontier.length > 0 ? frontier : [this.giantTreeCenter];
+    for (const p of ignitionPoints) {
+      const key = p.x + ',' + p.y;
+      if (!this.giantTreeBurning.has(key)) this.giantTreeBurning.set(key, 4 + Math.random() * 3);
+    }
+    return true;
+  }
+
+  isGiantTreeFullyScorched() {
+    if (this.giantTreeTiles.length === 0) return false;
+    return this.giantTreeTiles.every((p) => {
+      const t = this.getTile(p.x, p.y);
+      return t && t.type === TILE_TYPES.SCORCHED_GIANT_TREE;
+    });
+  }
+
+  // 火が燃え広がり、燃え尽きたタイルは「炭化した巨大樹跡地」になる
+  updateFire(dt) {
+    if (this.giantTreeBurning.size === 0) return;
+    const finishedKeys = [];
+    for (const [key, remaining] of this.giantTreeBurning.entries()) {
+      const next = remaining - dt;
+      if (next <= 0) {
+        finishedKeys.push(key);
+      } else {
+        this.giantTreeBurning.set(key, next);
+      }
+    }
+    for (const key of finishedKeys) {
+      this.giantTreeBurning.delete(key);
+      const [x, y] = key.split(',').map(Number);
+      const t = this.getTile(x, y);
+      if (t) t.type = TILE_TYPES.SCORCHED_GIANT_TREE;
+      const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+      for (const [nx, ny] of neighbors) {
+        const nt = this.getTile(nx, ny);
+        if (nt && nt.type === TILE_TYPES.GIANT_TREE) {
+          const nkey = nx + ',' + ny;
+          if (!this.giantTreeBurning.has(nkey) && Math.random() < 0.7) {
+            this.giantTreeBurning.set(nkey, 3 + Math.random() * 3);
+          }
         }
       }
     }
@@ -194,7 +301,7 @@ class GameMap {
   isWalkable(x, y) {
     const t = this.getTile(Math.floor(x), Math.floor(y));
     if (!t) return false;
-    return t.type !== TILE_TYPES.SEA && t.type !== TILE_TYPES.LAKE;
+    return t.type !== TILE_TYPES.SEA && t.type !== TILE_TYPES.LAKE && t.type !== TILE_TYPES.GIANT_TREE;
   }
 
   // 雨天時に木/巨木をゆっくり回復させる
@@ -212,10 +319,7 @@ class GameMap {
     for (const crop of this.crops) {
       if (crop.stage >= 3) continue;
       crop.timer += dt * growthMul;
-      if (crop.timer >= CROP_STAGE_DURATION) {
-        crop.timer = 0;
-        crop.stage += 1;
-      }
+      if (crop.timer >= CROP_STAGE_DURATION) { crop.timer = 0; crop.stage += 1; }
     }
   }
 }
