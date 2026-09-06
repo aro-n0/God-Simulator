@@ -99,6 +99,41 @@ function randomizeAppearance(seed) {
   };
 }
 
+function appearanceSignature(a) {
+  return [a.skinTone, a.hairColor, a.clothesColor, a.hairStyle, a.hasHat ? a.hatColor : 'nohat'].join('|');
+}
+
+// 名前・性格プロンプト・外見・基礎ステータスをまとめて被りなくランダム生成する(ダイスボタン用)
+function randomizeFullCharacter(excludeNames, excludeSignatures) {
+  excludeNames = excludeNames || new Set();
+  excludeSignatures = excludeSignatures || new Set();
+
+  let name = generateRandomName();
+  let nameTries = 0;
+  while (excludeNames.has(name) && nameTries < 40) {
+    name = generateRandomName();
+    nameTries++;
+  }
+
+  const jobKeys = Object.keys(JOB_KEYWORDS);
+  const personalityKeys = Object.keys(PERSONALITY_KEYWORDS);
+  const job = jobKeys[Math.floor(Math.random() * jobKeys.length)];
+  const personality = personalityKeys[Math.floor(Math.random() * personalityKeys.length)];
+  const prompt = `${personality}な${job}`;
+
+  let appearance = randomizeAppearance();
+  let sig = appearanceSignature(appearance);
+  let appTries = 0;
+  while (excludeSignatures.has(sig) && appTries < 40) {
+    appearance = randomizeAppearance();
+    sig = appearanceSignature(appearance);
+    appTries++;
+  }
+
+  const stats = rollBaseStats();
+  return { name, prompt, appearance, stats };
+}
+
 // STR/AGI/INT/CHA を1-10でロール（ダイスボタン用）
 function rollBaseStats(seed) {
   const rand = mulberry32(seed != null ? seed >>> 0 : Math.floor(Math.random() * 0xffffffff));
@@ -294,6 +329,116 @@ function buildCropIcon(type, stage) {
     _px(ctx, 3, 2, 6, 7, '#2f6a34');
     const ripeColor = type === 'wheat' ? '#e0c23c' : type === 'apple' ? '#c94b4b' : '#8ae06e';
     _px(ctx, 2, 0, 8, 4, ripeColor);
+  }
+  return cnv;
+}
+
+// ============ 超巨大ランドマーク用アイコン ============
+
+function buildGiantTreeIcon() {
+  const size = 40;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 3, 3, 34, 34, '#0c2810');
+  _px(ctx, 1, 8, 38, 24, '#0c2810');
+  _px(ctx, 8, 0, 24, 9, '#0c2810');
+  _px(ctx, 6, 6, 28, 27, '#173a1c');
+  _px(ctx, 10, 10, 20, 19, '#245c2b');
+  _px(ctx, 14, 13, 12, 12, '#357f3d');
+  _px(ctx, 17, 15, 6, 6, '#4fae5e');
+  // 途方もない幹(年輪を強調)
+  _px(ctx, 15, 30, 10, 10, '#2c1c10');
+  _px(ctx, 17, 32, 6, 6, '#3d2a16');
+  _px(ctx, 19, 34, 2, 2, '#523a1e');
+  return cnv;
+}
+
+function buildScorchedGiantTreeIcon() {
+  const size = 40;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 6, 6, 28, 30, '#1a1512');
+  _px(ctx, 10, 10, 20, 22, '#2b2420');
+  _px(ctx, 14, 14, 12, 14, '#3a322c');
+  // 焼け跡の裂け目(灰色のひび)
+  _px(ctx, 18, 8, 3, 24, '#4a4038');
+  _px(ctx, 22, 20, 3, 12, '#4a4038');
+  return cnv;
+}
+
+function buildFireIcon() {
+  const size = 10;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 2, 4, 6, 6, '#c94b1a');
+  _px(ctx, 3, 2, 4, 6, '#e0902c');
+  _px(ctx, 4, 0, 2, 4, '#f0c23c');
+  return cnv;
+}
+
+// ============ 動物アイコン(種別が一目でわかる簡易ドット絵) ============
+
+function buildAnimalIcon(type) {
+  const size = 16;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  switch (type) {
+    case 'chicken':
+      _px(ctx, 4, 6, 8, 7, '#f2ecd8');
+      _px(ctx, 9, 4, 5, 5, '#f2ecd8');
+      _px(ctx, 11, 3, 3, 2, '#c94b1a');
+      _px(ctx, 13, 5, 2, 1, '#e0a83c');
+      _px(ctx, 5, 12, 2, 2, '#e0a83c');
+      _px(ctx, 8, 12, 2, 2, '#e0a83c');
+      break;
+    case 'cow':
+      _px(ctx, 2, 5, 12, 8, '#f5f5f2');
+      _px(ctx, 3, 6, 4, 3, '#2b2b2b');
+      _px(ctx, 9, 9, 4, 3, '#2b2b2b');
+      _px(ctx, 4, 3, 3, 3, '#f5f5f2');
+      _px(ctx, 3, 2, 1, 2, '#e8e8e8');
+      _px(ctx, 6, 2, 1, 2, '#e8e8e8');
+      _px(ctx, 3, 13, 2, 2, '#d8d8d8');
+      _px(ctx, 10, 13, 2, 2, '#d8d8d8');
+      break;
+    case 'pig':
+      _px(ctx, 3, 6, 10, 7, '#f0b8c0');
+      _px(ctx, 5, 4, 6, 3, '#f0b8c0');
+      _px(ctx, 6, 7, 4, 3, '#e89aa4');
+      _px(ctx, 7, 8, 1, 1, '#a85a62');
+      _px(ctx, 9, 8, 1, 1, '#a85a62');
+      _px(ctx, 3, 13, 2, 2, '#d89aa2');
+      _px(ctx, 9, 13, 2, 2, '#d89aa2');
+      break;
+    case 'tiger':
+      _px(ctx, 2, 5, 12, 8, '#e0902c');
+      _px(ctx, 3, 6, 2, 6, '#2b2b2b');
+      _px(ctx, 7, 5, 2, 7, '#2b2b2b');
+      _px(ctx, 11, 6, 2, 6, '#2b2b2b');
+      _px(ctx, 4, 3, 6, 3, '#e0902c');
+      _px(ctx, 4, 2, 1, 2, '#2b2b2b');
+      _px(ctx, 9, 2, 1, 2, '#2b2b2b');
+      break;
+    case 'sheep':
+      _px(ctx, 2, 4, 12, 9, '#f5f2e8');
+      _px(ctx, 3, 3, 4, 3, '#f5f2e8');
+      _px(ctx, 8, 3, 4, 3, '#f5f2e8');
+      _px(ctx, 5, 6, 5, 4, '#e8e2cc');
+      _px(ctx, 5, 8, 3, 3, '#4a4038');
+      _px(ctx, 3, 13, 2, 2, '#4a4038');
+      _px(ctx, 10, 13, 2, 2, '#4a4038');
+      break;
+    default:
+      _px(ctx, 4, 4, 8, 8, '#cccccc');
   }
   return cnv;
 }
