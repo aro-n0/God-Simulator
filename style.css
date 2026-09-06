@@ -569,3 +569,192 @@ button:hover {
   background: #8a2b2b;
   color: #fff;
 }
+
+/* 上部バー: 新規ボタン・速度切替・時計表示 */
+#room-bar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.speed-group {
+  display: flex;
+  gap: 4px;
+}
+
+.speed-btn {
+  background: #1a2a38;
+  color: #aad4b0;
+  padding: 5px 10px;
+}
+
+.speed-btn.active {
+  background: #2d6a34;
+  color: #fff;
+}
+
+#world-clock {
+  color: #ffe066;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+#btn-open-creator:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ファミコン風モーダル共通(既存char-modalの上に汎用化) */
+.famicom-modal-box {
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.famicom-title {
+  margin: 0 0 14px 0;
+  font-size: 15px;
+  color: #ffe066;
+  text-align: center;
+}
+
+/* 住民作成モーダル */
+.creator-box {
+  width: 640px;
+}
+
+.creator-columns {
+  display: flex;
+  gap: 18px;
+}
+
+.creator-left {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.creator-left #preview-canvas {
+  width: 112px;
+  height: 112px;
+  image-rendering: pixelated;
+  background: #111;
+  border: 3px solid #fff;
+}
+
+.randomize-btn {
+  width: 100%;
+  background: #b08a3c;
+  font-size: 11px;
+  padding: 8px 4px;
+}
+
+.stat-bars {
+  width: 100%;
+  font-size: 10px;
+  color: #fff;
+}
+
+.stat-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.stat-bar {
+  flex: 1;
+  height: 8px;
+  background: #222;
+  border: 1px solid #fff;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: #4fae5e;
+}
+
+.creator-right {
+  flex: 1;
+  min-width: 0;
+}
+
+.creator-right label {
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 4px;
+  color: #bcd;
+  font-size: 11px;
+}
+
+.creator-right input[type="text"],
+.creator-right textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 3px;
+  border: 1px solid #555;
+  background: #1a2a38;
+  color: #fff;
+  resize: none;
+}
+
+.famicom-modal-box hr {
+  border: none;
+  border-top: 2px dashed #444;
+  margin: 14px 0;
+}
+
+.famicom-modal-box h3 {
+  font-size: 12px;
+  color: #9fe0a8;
+  margin: 0 0 8px 0;
+}
+
+/* 一覧モーダル(ライブラリ/住民一覧共通) */
+.roster-list, .library-list {
+  max-height: 320px;
+}
+
+.roster-mood {
+  font-size: 10px;
+  color: #ffe066;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+/* この世界のルール モーダル */
+.rules-text {
+  white-space: pre-wrap;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #ddd;
+  background: #0d1620;
+  border: 1px solid #333;
+  padding: 12px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.rules-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.rules-table th, .rules-table td {
+  border: 1px solid #444;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.rules-table th {
+  background: #1a2a38;
+  color: #9fe0a8;
+}
+
+/* キャラ詳細モーダルの追加タグ色 */
+.tag-ability { background: #3c6b8a; color: #fff; }
+.tag-title { background: #8a4fae; color: #fff; }
+.tag-inventory { background: #444; color: #fff; }
