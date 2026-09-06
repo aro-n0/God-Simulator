@@ -160,6 +160,7 @@ class Game {
       document.querySelectorAll('.speed-btn').forEach((b) => b.classList.remove('active'));
       document.getElementById(btnId).classList.add('active');
     };
+    document.getElementById('btn-speed-0').addEventListener('click', () => setSpeed(0, 'btn-speed-0'));
     document.getElementById('btn-speed-1').addEventListener('click', () => setSpeed(1, 'btn-speed-1'));
     document.getElementById('btn-speed-2').addEventListener('click', () => setSpeed(2, 'btn-speed-2'));
     document.getElementById('btn-speed-5').addEventListener('click', () => setSpeed(5, 'btn-speed-5'));
@@ -307,9 +308,8 @@ class Game {
   _bindModals() {
     document.getElementById('char-modal-close').addEventListener('click', () => this._closeModal('char-modal'));
     document.getElementById('roster-modal-close').addEventListener('click', () => this._closeModal('roster-modal'));
-    document.getElementById('rules-modal-close').addEventListener('click', () => this._closeModal('rules-modal'));
     document.getElementById('animal-modal-close').addEventListener('click', () => this._closeModal('animal-modal'));
-    ['char-modal', 'roster-modal', 'rules-modal', 'creator-modal', 'animal-modal'].forEach((id) => {
+    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal'].forEach((id) => {
       const modal = document.getElementById(id);
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
     });
@@ -317,10 +317,6 @@ class Game {
     document.getElementById('btn-open-roster').addEventListener('click', () => {
       this._renderRoster();
       document.getElementById('roster-modal').classList.add('open');
-    });
-    document.getElementById('btn-open-rules').addEventListener('click', () => {
-      this._renderRules();
-      document.getElementById('rules-modal').classList.add('open');
     });
   }
 
@@ -349,13 +345,6 @@ class Game {
         if (c) { this._closeModal('roster-modal'); this._openCharacterModal(c); }
       });
     });
-  }
-
-  _renderRules() {
-    document.getElementById('rules-text-body').textContent = WORLD_RULES_TEXT.trim();
-    const table = document.getElementById('rules-behavior-table');
-    table.innerHTML = '<tr><th>性格ラベル</th><th>実際の挙動</th></tr>' +
-      PERSONALITY_BEHAVIOR_MAP.map((r) => `<tr><td>${r.label}</td><td>${r.effect}</td></tr>`).join('');
   }
 
   _handleTap(screenX, screenY) {
@@ -437,7 +426,7 @@ class Game {
 
     document.getElementById('char-modal-name').textContent = c.params.name;
     document.getElementById('char-modal-affiliation').textContent = c.affiliation || '無所属';
-    document.getElementById('char-modal-job').textContent = c.params.job || 'なし';
+    document.getElementById('char-modal-job').textContent = c.dynamicJob || c.params.job || 'なし';
     const bubble = document.getElementById('char-modal-mood-bubble');
     const newMood = c.getMoodText();
     if (bubble.textContent !== newMood) { bubble.textContent = newMood; this._retriggerBubble(bubble); }
@@ -458,6 +447,8 @@ class Game {
         el.appendChild(tag);
       });
     };
+    fill('char-modal-innate-tags', c.params.personalityTags, 'tag-innate', null);
+    fill('char-modal-acquired-tags', c.acquiredPersonality, 'tag-acquired', null);
     fill('char-modal-ability-tags', c.getAbilityTags(), 'tag-ability', '能力');
     fill('char-modal-title-tags', c.titleTags, 'tag-title', '肩書き');
     fill('char-modal-likes', c.params.likes, 'tag-like', '好き');
@@ -488,6 +479,9 @@ class Game {
         if (!busy(a) && !busy(b) && Math.random() < 0.15) {
           a.state = STATES.SOCIAL; a.actionTimer = 2.5; a._setEmote(pickDialogue('greeting'));
           b.state = STATES.SOCIAL; b.actionTimer = 2.5; b._setEmote(pickDialogue('friendly'));
+          a.actionCounts.socializing += 1; b.actionCounts.socializing += 1;
+          if (a.affinity[b.id] >= 80) a._lastSocialBondBonus = true;
+          if (b.affinity[a.id] >= 80) b._lastSocialBondBonus = true;
         }
 
         // 結婚判定
@@ -529,6 +523,7 @@ class Game {
                 thief.inventory[key] = (thief.inventory[key] || 0) + 1;
                 victim.affinity[thief.id] = Math.max(0, (victim.affinity[thief.id] || 0) - 30);
                 thief.state = STATES.STEAL; thief.actionTimer = 1.5; thief._setEmote('盗んでしまった…');
+                thief.actionCounts.stealing += 1;
                 victim._setEmote(pickDialogue('steal_victim'));
                 if (!thief.titleTags.includes('犯罪者')) thief.titleTags.push('犯罪者');
               }
@@ -569,6 +564,15 @@ class Game {
   _loop(now) {
     const realDt = Math.min(0.1, (now - this._lastTime) / 1000);
     this._lastTime = now;
+
+    if (this.speedMultiplier === 0) {
+      // 完全一時停止: シミュレーションは一切進めず描画のみ行う(カメラ操作は可能)
+      this._updateClockUI(WEATHER_EFFECTS[this.weather]);
+      this._render();
+      requestAnimationFrame((t) => this._loop(t));
+      return;
+    }
+
     const dt = realDt * this.speedMultiplier;
 
     // 天候
@@ -638,6 +642,7 @@ class Game {
   _updateClockUI(weatherEffect) {
     const el = document.getElementById('world-clock');
     if (!el) return;
+    if (this.speedMultiplier === 0) { el.textContent = '⏸ 時間停止中'; return; }
     const phase = this.isNight ? '🌙 夜' : '☀ 昼';
     el.textContent = `${weatherEffect.label} ${phase} / ${this.currentDay}日目`;
   }
