@@ -1,20 +1,42 @@
 // character.js
-// 各キャラクターの自律行動ステートマシン、吹き出し演出、好き嫌い/性格の動的変化。
+// 自律行動ステートマシン(徘徊/採取/休憩/睡眠/食事/祈り/交流/盗み)、
+// 空腹・体力・年齢・寿命・言語レベル・好き嫌いの動的変化を扱う。
+// 「現在の気持ち」は言語レベルに関わらず常に日本語で表示される(getMoodText)。
 
 const STATES = {
   WANDER: 'WANDER',
   MOVE_TO_TARGET: 'MOVE_TO_TARGET',
   GATHER: 'GATHER',
   REST: 'REST',
+  SLEEP: 'SLEEP',
+  EAT: 'EAT',
+  PRAY: 'PRAY',
+  SOCIAL: 'SOCIAL',
+  STEAL: 'STEAL',
 };
 
 const EMOTES = {
   WANDER: ['散歩中', 'ふらふら中', 'のんびり'],
   MOVE_TO_TARGET: ['向かってる…'],
   GATHER_tree: ['木を伐採中', '木こり中'],
+  GATHER_big_tree: ['巨木を伐採中'],
   GATHER_stone: ['採石中'],
-  REST: ['休憩中', 'お腹空いた…', 'ひとやすみ'],
+  GATHER_ore: ['鉱石を採掘中'],
+  GATHER_fish: ['釣りをしている'],
+  FARM: ['収穫中'],
+  REST: ['休憩中', 'ひとやすみ'],
 };
+
+const FOOD_VALUES = {
+  wheat: 12, apple: 14, vegetable: 13, meat: 18, milk: 10, egg: 8, fish: 15,
+  bread: 32, cooked_meat: 36, cooked_fish: 30, cooked_vegetable: 28,
+};
+const RAW_TO_COOKED = { wheat: 'bread', meat: 'cooked_meat', fish: 'cooked_fish', vegetable: 'cooked_vegetable' };
+
+const AGE_YEARS_PER_DAY = 3; // 1ゲーム内日 = 3年(短時間で寿命を観測できるようにする調整値)
+const ADULT_AGE = 16;
+
+let _charIdCounter = 1;
 
 function pickEmote(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -22,6 +44,7 @@ function pickEmote(arr) {
 
 class Character {
   constructor(params, map, x, y, restore) {
+    this.id = (restore && restore.id) || 'char_' + _charIdCounter++ + '_' + Math.floor(Math.random() * 100000);
     this.params = params;
     this.map = map;
     this.x = x;
@@ -32,16 +55,36 @@ class Character {
     this.wanderTimer = 0;
     this.gatherTarget = null;
     this.gatherTimer = 0;
+    this.actionTimer = 0;
     this.emote = '';
     this.emoteTimer = 0;
-    this.inventory = (restore && restore.inventory) || { tree: 0, stone: 0 };
+    this.inventory = (restore && restore.inventory) || {};
     this.sprite = buildSpriteCanvas(params);
     this.facing = (restore && restore.facing) || 1;
     this.affiliation = (restore && restore.affiliation) || '無所属';
-    this.isRemoteMirror = false; // trueの場合は他プレイヤー(ホスト)からの受信データで描画のみ行う
+    this.isRemoteMirror = false;
+    this.isDead = false;
 
-    // 性格・好き嫌いの動的変化を判定するためのトラッキング
-    this.gatherStreak = (restore && restore.gatherStreak) || { tree: 0, stone: 0 };
+    // 生命・欲求
+    this.hunger = restore && typeof restore.hunger === 'number' ? restore.hunger : 100;
+    this.hp = restore && typeof restore.hp === 'number' ? restore.hp : 100;
+    this.gender = (restore && restore.gender) || (Math.random() < 0.5 ? 'male' : 'female');
+    this.ageYears = restore && typeof restore.ageYears === 'number' ? restore.ageYears : 16 + Math.random() * 20;
+    this.lifespanYears = restore && typeof restore.lifespanYears === 'number' ? restore.lifespanYears : 40 + Math.random() * 80;
+    this._ageSpeedMul = 1;
+
+    // 言語・社会
+    this.languageLevel = (restore && restore.languageLevel) || 1;
+    this.languageProgress = (restore && restore.languageProgress) || 0;
+    this.partnerId = (restore && restore.partnerId) || null;
+    this.marriageCooldown = 0;
+    this.childCooldown = 0;
+    this.titleTags = (restore && restore.titleTags) || [];
+    this.prayCount = (restore && restore.prayCount) || 0;
+    this.affinity = (restore && restore.affinity) || {};
+
+    // 動的変化トラッキング
+    this.gatherStreak = (restore && restore.gatherStreak) || { tree: 0, stone: 0, big_tree: 0 };
     this.restStreak = (restore && restore.restStreak) || 0;
     this.rainExposure = (restore && restore.rainExposure) || 0;
     this._evolutionCooldown = 5;
@@ -51,11 +94,12 @@ class Character {
     return Math.hypot(this.x - tx, this.y - ty);
   }
 
-  findNearbyResource(radius = 12) {
+  findNearbyResource(radius, filterFn) {
     let best = null;
     let bestDist = Infinity;
     for (const r of this.map.resources) {
       if (r.amount <= 0) continue;
+      if (filterFn && !filterFn(r)) continue;
       const d = this.distTo(r.x + 0.5, r.y + 0.5);
       if (d < radius && d < bestDist) {
         best = r;
@@ -65,30 +109,134 @@ class Character {
     return best;
   }
 
-  // isRaining: マップ全体の天候フラグ（ゲームループから渡される）
-  update(dt, isRaining) {
-    if (this.isRemoteMirror) return; // 観測モードでは自前でシミュレーションしない
-    this.emoteTimer -= dt;
+  // 空腹時に優先して探す食料源(完熟作物・収穫可能な動物・魚)
+  findFoodSource(radius) {
+    for (const crop of this.map.crops) {
+      if (crop.stage < 3) continue;
+      const d = this.distTo(crop.x + 0.5, crop.y + 0.5);
+      if (d < radius) return { x: crop.x, y: crop.y, type: crop.type, isCrop: true, amount: 1 };
+    }
+    for (const a of this.map.animals) {
+      if (a.amount <= 0) continue;
+      if (a.dangerous) continue;
+      const d = this.distTo(a.x, a.y);
+      if (d < radius) return a;
+    }
+    if (this.params.canFish) {
+      const fish = this.findNearbyResource(radius, (r) => r.type === 'fish');
+      if (fish) return fish;
+    }
+    return null;
+  }
 
-    const isOutside = this.state !== STATES.REST;
-    if (isRaining && isOutside) this.rainExposure += dt;
+  hasFood() {
+    return Object.keys(this.inventory).some((k) => FOOD_VALUES[k] && this.inventory[k] > 0);
+  }
+
+  _bestFoodKey() {
+    let best = null, bestVal = -1;
+    for (const k in this.inventory) {
+      if (FOOD_VALUES[k] && this.inventory[k] > 0 && FOOD_VALUES[k] > bestVal) {
+        best = k; bestVal = FOOD_VALUES[k];
+      }
+    }
+    return best;
+  }
+
+  // isNight/weather/ageDeltaYears/moveSpeedMul/fatigueMul はゲームループから渡される
+  update(dt, ctx) {
+    if (this.isRemoteMirror) return;
+    ctx = ctx || {};
+    if (this.hp <= 0) { this.isDead = true; return; }
+
+    this.emoteTimer -= dt;
+    this.ageYears += ctx.ageDeltaYears || 0;
+
+    // 言語レベルは年齢・時間経過で緩やかに上昇する
+    this.languageProgress += dt * (0.5 + (this.params.int || 5) * 0.05);
+    if (this.languageProgress > 40 && this.languageLevel < 5) {
+      this.languageProgress = 0;
+      this.languageLevel += 1;
+    }
+
+    // 年齢に応じた移動速度の低下(寿命の70%を超えると徐々に遅くなる)
+    const ratio = this.ageYears / this.lifespanYears;
+    if (ratio > 0.7) this._ageSpeedMul = Math.max(0.3, 1 - ((ratio - 0.7) / 0.3) * 0.7);
+    else this._ageSpeedMul = 1;
+    if (ratio >= 1) this.hp -= dt * 2.5; // 寿命超過で衰弱
+
+    // 空腹・体力の増減(天候で悪天候時は消耗が早い)
+    const hungerRate = 0.12 * (ctx.fatigueMul || 1);
+    this.hunger = Math.max(0, this.hunger - dt * hungerRate);
+    if (this.hunger <= 0) this.hp = Math.max(0, this.hp - dt * 2);
+    else if (this.hunger > 40 && this.hp < 100) this.hp = Math.min(100, this.hp + dt * 0.3);
+
+    if (this.marriageCooldown > 0) this.marriageCooldown -= dt;
+    if (this.childCooldown > 0) this.childCooldown -= dt;
+
+    const isOutside = this.state !== STATES.REST && this.state !== STATES.SLEEP;
+    if (ctx.weather === 'rain' || ctx.weather === 'blessed_rain' || ctx.weather === 'storm') {
+      if (isOutside) this.rainExposure += dt;
+    }
+
+    // --- 優先度: 睡眠(夜) > 空腹での食事 > 天候での祈り > 通常AI ---
+    if (ctx.isNight) {
+      if (this.state !== STATES.SLEEP) { this.state = STATES.SLEEP; this._setEmote('眠っている'); }
+    } else if (this.state === STATES.SLEEP) {
+      this.state = STATES.WANDER;
+    }
+
+    if (this.state !== STATES.SLEEP) {
+      if (this.hunger < 35 && this.hasFood() && this.state !== STATES.EAT) {
+        this._startEat();
+      } else if (
+        ctx.weather === 'storm' &&
+        this.state !== STATES.PRAY &&
+        this.state !== STATES.EAT &&
+        Math.random() < 0.004 * (1 + (this.params.int || 5) / 10)
+      ) {
+        this.state = STATES.PRAY;
+        this.actionTimer = 4 + Math.random() * 3;
+        this.prayCount += 1;
+        this._setEmote('祈っている');
+        if (this.prayCount >= 5 && !this.titleTags.includes('信心深い')) this.titleTags.push('信心深い');
+      }
+    }
+
+    const moveSpeedMul = (ctx.moveSpeedMul || 1) * this._ageSpeedMul;
 
     switch (this.state) {
-      case STATES.WANDER:
-        this._updateWander(dt);
-        break;
-      case STATES.MOVE_TO_TARGET:
-        this._updateMoveToTarget(dt);
-        break;
-      case STATES.GATHER:
-        this._updateGather(dt);
-        break;
-      case STATES.REST:
-        this._updateRest(dt);
-        break;
+      case STATES.WANDER: this._updateWander(dt, moveSpeedMul); break;
+      case STATES.MOVE_TO_TARGET: this._updateMoveToTarget(dt, moveSpeedMul); break;
+      case STATES.GATHER: this._updateGather(dt); break;
+      case STATES.REST: this._updateRest(dt); break;
+      case STATES.SLEEP: this._updateSleep(dt); break;
+      case STATES.EAT: this._updateAction(dt, EMOTES.REST); break;
+      case STATES.PRAY: this._updateAction(dt, ['祈っている']); break;
+      case STATES.SOCIAL: this._updateAction(dt, ['交流中']); break;
+      case STATES.STEAL: this._updateAction(dt, ['こっそり…']); break;
     }
     this.stamina = Math.max(0, Math.min(100, this.stamina));
+    this.hp = Math.max(0, Math.min(100, this.hp));
+    if (this.hp <= 0) this.isDead = true;
     this._checkTraitEvolution(dt);
+  }
+
+  _startEat() {
+    const key = this._bestFoodKey();
+    if (!key) return;
+    this.inventory[key] -= 1;
+    if (this.inventory[key] <= 0) delete this.inventory[key];
+    this.hunger = Math.min(100, this.hunger + (FOOD_VALUES[key] || 10));
+    this.state = STATES.EAT;
+    this.actionTimer = 1.5;
+    this._setEmote('食事中');
+  }
+
+  _updateAction(dt, emotePool) {
+    this.actionTimer -= dt;
+    if (Math.random() < 0.02) this._setEmote(pickEmote(emotePool));
+    if (this.actionTimer <= 0) this.state = STATES.WANDER;
   }
 
   _setEmote(text) {
@@ -96,20 +244,32 @@ class Character {
     this.emoteTimer = 3;
   }
 
-  _updateWander(dt) {
+  _updateWander(dt, moveSpeedMul) {
     this.stamina -= dt * 0.6;
     if (this.stamina < this.params.restThreshold) {
       this.state = STATES.REST;
       this._setEmote(pickEmote(EMOTES.REST));
       return;
     }
-    const nearby = this.findNearbyResource();
-    if (nearby && Math.random() < 0.02) {
-      this.gatherTarget = nearby;
+
+    // 空腹なら食料源を優先探索、平常時は木/石などの資源探索
+    let target = null;
+    let isFood = false;
+    if (this.hunger < 55) {
+      target = this.findFoodSource(14);
+      isFood = !!target;
+    }
+    if (!target && Math.random() < 0.02) {
+      target = this.findNearbyResource(12, (r) => r.type !== 'fish' || this.params.canFish);
+    }
+    if (target) {
+      this.gatherTarget = target;
+      this.gatherTarget.isFoodTarget = isFood;
       this.state = STATES.MOVE_TO_TARGET;
       this._setEmote(pickEmote(EMOTES.MOVE_TO_TARGET));
       return;
     }
+
     this.wanderTimer -= dt;
     if (!this.wanderTarget || this.wanderTimer <= 0) {
       const angle = Math.random() * Math.PI * 2;
@@ -122,20 +282,22 @@ class Character {
       this.wanderTimer = 3 + Math.random() * 3;
       if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES.WANDER));
     }
-    this._moveToward(this.wanderTarget.x, this.wanderTarget.y, dt, 0.5);
+    this._moveToward(this.wanderTarget.x, this.wanderTarget.y, dt, 0.5 * moveSpeedMul);
   }
 
-  _updateMoveToTarget(dt) {
+  _updateMoveToTarget(dt, moveSpeedMul) {
     this.stamina -= dt * 0.6;
     if (!this.gatherTarget || this.gatherTarget.amount <= 0) {
       this.state = STATES.WANDER;
       return;
     }
-    const arrived = this._moveToward(this.gatherTarget.x + 0.5, this.gatherTarget.y + 0.5, dt, 1);
+    const arriveRadius = this.gatherTarget.isWater ? 1.1 : this.gatherTarget.isAnimal ? 0.8 : 0.15;
+    const arrived = this._moveToward(this.gatherTarget.x + 0.5, this.gatherTarget.y + 0.5, dt, moveSpeedMul, arriveRadius);
     if (arrived) {
       this.state = STATES.GATHER;
       this.gatherTimer = 0;
-      this._setEmote(pickEmote(EMOTES['GATHER_' + this.gatherTarget.type] || ['作業中']));
+      const key = 'GATHER_' + (this.gatherTarget.type || '');
+      this._setEmote(pickEmote(EMOTES[key] || EMOTES.FARM));
     }
   }
 
@@ -146,21 +308,50 @@ class Character {
       this._setEmote(pickEmote(EMOTES.REST));
       return;
     }
-    if (!this.gatherTarget || this.gatherTarget.amount <= 0) {
-      this.state = STATES.WANDER;
+    const target = this.gatherTarget;
+    if (!target) { this.state = STATES.WANDER; return; }
+
+    // 作物(成長ベース)
+    if (target.isCrop) {
+      const crop = this.map.crops.find((c) => c.x === target.x && c.y === target.y);
+      if (!crop || crop.stage < 3) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
+      this.gatherTimer += dt;
+      if (this.gatherTimer > 1.5) {
+        this.gatherTimer = 0;
+        crop.stage = 0; crop.timer = 0;
+        this.inventory[crop.type] = (this.inventory[crop.type] || 0) + 1;
+        this.gatherTarget = null;
+        this.state = STATES.WANDER;
+      }
       return;
     }
+
+    // 動物(卵/牛乳/毛皮/肉)
+    if (target.isAnimal) {
+      if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
+      this.gatherTimer += dt;
+      if (this.gatherTimer > 1.2) {
+        this.gatherTimer = 0;
+        const drop = harvestAnimal(target);
+        this.inventory[drop] = (this.inventory[drop] || 0) + 1;
+        if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
+      }
+      return;
+    }
+
+    // 通常資源(木/巨木/石/鉱石/魚)
+    if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
     this.gatherTimer += dt;
-    const bonus = this.params.gatherBonus[this.gatherTarget.type] || 1;
+    const bonus = (this.params.gatherBonus && this.params.gatherBonus[target.type]) || 1;
     const rate = 0.5 * bonus * this.params.gatherEffMul;
     if (this.gatherTimer > 1 / rate) {
       this.gatherTimer = 0;
-      const type = this.gatherTarget.type;
-      this.gatherTarget.amount -= 1;
+      const type = target.type;
+      if (target.amount !== Infinity) target.amount -= 1;
       this.inventory[type] = (this.inventory[type] || 0) + 1;
-      this.gatherStreak[type] = (this.gatherStreak[type] || 0) + 1;
+      if (this.gatherStreak[type] != null) this.gatherStreak[type] += 1;
       if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES['GATHER_' + type] || ['作業中']));
-      if (this.gatherTarget.amount <= 0) {
+      if (target.amount <= 0) {
         this.gatherTarget = null;
         this.state = STATES.WANDER;
       } else if (Math.random() > this.params.gatherPersist * 0.9) {
@@ -173,21 +364,38 @@ class Character {
     this.stamina += dt * 8;
     this.restStreak += dt;
     if (Math.random() < 0.01) this._setEmote(pickEmote(EMOTES.REST));
-    if (this.stamina >= 90) this.state = STATES.WANDER;
+    // 生の食材を持っていれば休憩中に調理することがある
+    if (!this._cookedThisRest) {
+      const rawKey = Object.keys(RAW_TO_COOKED).find((k) => this.inventory[k] > 0);
+      if (rawKey && Math.random() < 0.4) {
+        this.inventory[rawKey] -= 1;
+        if (this.inventory[rawKey] <= 0) delete this.inventory[rawKey];
+        const cooked = RAW_TO_COOKED[rawKey];
+        this.inventory[cooked] = (this.inventory[cooked] || 0) + 1;
+        this._setEmote('料理中');
+      }
+      this._cookedThisRest = true;
+    }
+    if (this.stamina >= 90) { this.state = STATES.WANDER; this._cookedThisRest = false; }
   }
 
-  _moveToward(tx, ty, dt, speedMul = 1) {
+  _updateSleep(dt) {
+    this.stamina = Math.min(100, this.stamina + dt * 15);
+    this.hunger = Math.max(0, this.hunger - dt * 0.05);
+    this.hp = Math.min(100, this.hp + dt * 1.5);
+  }
+
+  _moveToward(tx, ty, dt, speedMul = 1, arriveRadius = 0.15) {
     const dx = tx - this.x;
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy);
-    if (d < 0.15) return true;
+    if (d < arriveRadius) return true;
     const speed = this.params.speed * speedMul * dt;
     const step = Math.min(speed, d);
     const nx = this.x + (dx / d) * step;
     const ny = this.y + (dy / d) * step;
     if (this.map.isWalkable(nx, ny)) {
-      this.x = nx;
-      this.y = ny;
+      this.x = nx; this.y = ny;
       this.facing = dx >= 0 ? 1 : -1;
     } else {
       this.wanderTarget = null;
@@ -195,7 +403,7 @@ class Character {
     return false;
   }
 
-  // 日常行動の蓄積に応じて「好き・苦手」を追加/変化させる（数秒おきに判定）
+  // 日常行動の蓄積に応じて「好き・苦手」を追加/変化させる(数秒おきに判定)
   _checkTraitEvolution(dt) {
     this._evolutionCooldown -= dt;
     if (this._evolutionCooldown > 0) return;
@@ -205,57 +413,54 @@ class Character {
     const dislikes = this.params.dislikes || (this.params.dislikes = []);
     const MAX_TAGS = 4;
 
-    if (this.gatherStreak.tree >= 20 && !likes.includes('木を伐ること')) {
-      likes.push('木を伐ること');
-      if (likes.length > MAX_TAGS) likes.shift();
-    }
-    if (this.gatherStreak.stone >= 20 && !likes.includes('石を掘ること')) {
-      likes.push('石を掘ること');
-      if (likes.length > MAX_TAGS) likes.shift();
-    }
-    if (this.restStreak >= 30 && !likes.includes('昼寝')) {
-      likes.push('昼寝');
-      if (likes.length > MAX_TAGS) likes.shift();
-    }
-    if (this.rainExposure >= 15 && !dislikes.includes('雨')) {
-      dislikes.push('雨');
-      if (dislikes.length > MAX_TAGS) dislikes.shift();
-    }
+    if (this.gatherStreak.tree >= 20 && !likes.includes('木を伐ること')) { likes.push('木を伐ること'); if (likes.length > MAX_TAGS) likes.shift(); }
+    if (this.gatherStreak.big_tree >= 15 && !likes.includes('巨木伐採')) { likes.push('巨木伐採'); if (likes.length > MAX_TAGS) likes.shift(); }
+    if (this.gatherStreak.stone >= 20 && !likes.includes('石を掘ること')) { likes.push('石を掘ること'); if (likes.length > MAX_TAGS) likes.shift(); }
+    if (this.restStreak >= 30 && !likes.includes('昼寝')) { likes.push('昼寝'); if (likes.length > MAX_TAGS) likes.shift(); }
+    if (this.rainExposure >= 15 && !dislikes.includes('雨')) { dislikes.push('雨'); if (dislikes.length > MAX_TAGS) dislikes.shift(); }
   }
 
-  // モーダル表示用の「現在の気持ち」
+  // 能力タグ(ステータスから自動導出)
+  getAbilityTags() {
+    const tags = [];
+    const p = this.params;
+    if ((p.str || 0) >= 8) tags.push('怪力');
+    if ((p.agi || 0) >= 8) tags.push('俊足');
+    if ((p.int || 0) >= 8) tags.push('賢者');
+    if ((p.cha || 0) >= 8) tags.push('人気者');
+    if (tags.length === 0) tags.push('見習い');
+    return tags;
+  }
+
+  // モーダル/吹き出し表示用の「現在の気持ち」。言語レベルに関わらず常に日本語。
   getMoodText() {
+    if (this.isDead) return '……';
     switch (this.state) {
-      case STATES.GATHER:
-        return this.emote || '作業に集中している';
-      case STATES.REST:
-        return this.stamina < 30 ? 'お腹が空いている…' : '休憩している';
-      case STATES.MOVE_TO_TARGET:
-        return '目的地へ向かっている';
-      default:
-        return this.emote || '元気に過ごしている';
+      case STATES.SLEEP: return '眠っている';
+      case STATES.EAT: return 'ごはんを食べている';
+      case STATES.PRAY: return '天候に祈りを捧げている';
+      case STATES.SOCIAL: return '誰かと交流している';
+      case STATES.STEAL: return 'こっそり何かをしている…';
+      case STATES.GATHER: return this.emote || '作業に集中している';
+      case STATES.REST: return this.hunger < 30 ? 'お腹が空いている…' : '休憩している';
+      case STATES.MOVE_TO_TARGET: return '目的地へ向かっている';
+      default: return this.emote || '元気に過ごしている';
     }
   }
 
-  // マルチプレイ同期用にシリアライズ（軽量）
   serialize() {
     return { x: this.x, y: this.y, state: this.state, emote: this.emote, facing: this.facing };
   }
 
-  // オートセーブ用にシリアライズ（復元に必要な全情報）
   fullSerialize() {
     return {
-      params: this.params,
-      x: this.x,
-      y: this.y,
-      state: this.state,
-      stamina: this.stamina,
-      inventory: this.inventory,
-      facing: this.facing,
-      affiliation: this.affiliation,
-      gatherStreak: this.gatherStreak,
-      restStreak: this.restStreak,
-      rainExposure: this.rainExposure,
+      id: this.id, params: this.params, x: this.x, y: this.y, state: this.state,
+      stamina: this.stamina, inventory: this.inventory, facing: this.facing,
+      affiliation: this.affiliation, gatherStreak: this.gatherStreak, restStreak: this.restStreak,
+      rainExposure: this.rainExposure, hunger: this.hunger, hp: this.hp, gender: this.gender,
+      ageYears: this.ageYears, lifespanYears: this.lifespanYears, languageLevel: this.languageLevel,
+      languageProgress: this.languageProgress, partnerId: this.partnerId, titleTags: this.titleTags,
+      prayCount: this.prayCount, affinity: this.affinity,
     };
   }
 }
