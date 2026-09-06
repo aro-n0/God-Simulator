@@ -93,6 +93,7 @@
           <div class="override-controls">
             <label class="small">服の色 <input id="override-clothes-color" type="color" /></label>
             <label class="small checkbox"><input id="override-hat" type="checkbox" /> 帽子をかぶる</label>
+            <label class="small">帽子の色 <input id="override-hat-color" type="color" /></label>
           </div>
 
           <p class="hint">
@@ -135,12 +136,14 @@
     <div class="famicom-modal-box">
       <button id="char-modal-close" class="famicom-close">×</button>
       <div class="famicom-modal-body">
-        <canvas id="char-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
+        <div class="famicom-sprite-wrap">
+          <div id="char-modal-mood-bubble" class="mood-bubble"></div>
+          <canvas id="char-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
+        </div>
         <div class="famicom-info">
           <div class="famicom-name" id="char-modal-name">-</div>
           <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
           <div class="famicom-row">職業: <span id="char-modal-job">-</span></div>
-          <div class="famicom-row">気持ち: <span id="char-modal-mood">-</span></div>
           <div class="famicom-row">STR/AGI/INT/CHA: <span id="char-modal-basestats">-</span></div>
           <div class="famicom-row">HP/空腹/疲労: <span id="char-modal-vitals">-</span></div>
           <div class="famicom-row">年齢/言語Lv: <span id="char-modal-age">-</span></div>
@@ -152,6 +155,26 @@
         <div id="char-modal-likes" class="tag-row"></div>
         <div id="char-modal-dislikes" class="tag-row"></div>
         <div id="char-modal-inventory" class="tag-row"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 動物詳細モーダル -->
+  <div id="animal-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="animal-modal-close" class="famicom-close">×</button>
+      <div class="famicom-modal-body">
+        <div class="famicom-sprite-wrap">
+          <div id="animal-modal-mood-bubble" class="mood-bubble"></div>
+          <canvas id="animal-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
+        </div>
+        <div class="famicom-info">
+          <div class="famicom-name" id="animal-modal-name">-</div>
+          <div class="famicom-row">状態: <span id="animal-modal-status">-</span></div>
+        </div>
+      </div>
+      <div class="famicom-tags">
+        <div id="animal-modal-traits" class="tag-row"></div>
       </div>
     </div>
   </div>
