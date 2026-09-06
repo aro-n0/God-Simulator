@@ -27,6 +27,31 @@ const EMOTES = {
   REST: ['休憩中', 'ひとやすみ'],
 };
 
+// 「今の気持ち」用の人間らしい独り言プール(システム的な行動名ではなく感情・独白として表示)
+const MOOD_PHRASES = {
+  WANDER: ['今日はどこへ行こうかな', '天気がいいと気分もいいな', 'のんびり歩くのが好きなんだ', '何か面白いことないかな', 'この道、前にも通ったかな'],
+  MOVE_TO_TARGET: ['あそこまで行ってみよう', 'もう少しで着きそうだ', '急がなくちゃ'],
+  GATHER_generic: ['この作業、正直めんどくさいな…', 'よし、集中してやろう', '思ったより時間がかかるな', '手が疲れてきたな'],
+  GATHER_tree: ['この木、立派だな', '斧を振るうのは気持ちいい', 'いい薪になりそうだ'],
+  GATHER_big_tree: ['とんでもなく大きい木だ…', '一人じゃ大変な作業だな'],
+  GATHER_stone: ['硬い岩だな…', '掘っても掘ってもきりがない', '腰にくるなあ'],
+  GATHER_ore: ['キラキラした鉱石だ', 'これはいい掘り出し物かも'],
+  FISH: ['魚が釣れるといいな', '水面が静かで落ち着くよ', '今日は入れ食いかな'],
+  FARM: ['やっと収穫できる', '実りの季節はうれしいな'],
+  REST: ['ちょっと一息つこう', '疲れたなあ…', 'このまま座っていたい気分だ'],
+  SLEEP: ['すやすや…', '夢を見ているみたいだ', 'ぐっすり眠りたいな'],
+  EAT: ['お腹が空いていたんだ', 'これはおいしい！', 'やっと人心地ついた'],
+  PRAY: ['どうか静まりますように…', '自然の力は恐ろしいな', '無事に過ごせますように'],
+  SOCIAL: ['話せて嬉しいな', 'この人とはウマが合いそうだ', 'たまにはおしゃべりもいいね'],
+  STEAL: ['ごめん…でも仕方なかったんだ', 'こんなこと、したくなかったのに', '見つかりませんように…'],
+  HUNGRY: ['お腹すいたな…', '早く何か食べたいよ', '力が出ないよ…'],
+  LAKE_NEARBY: ['湖が綺麗だな', '水の音が心地いいよ', 'このあたり、景色がいいな'],
+};
+
+function pickMood(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 const FOOD_VALUES = {
   wheat: 12, apple: 14, vegetable: 13, meat: 18, milk: 10, egg: 8, fish: 15,
   bread: 32, cooked_meat: 36, cooked_fish: 30, cooked_vegetable: 28,
@@ -326,13 +351,15 @@ class Character {
       return;
     }
 
-    // 動物(卵/牛乳/毛皮/肉)
+    // 動物(卵/牛乳/毛皮/肉、羊は毛刈り優先)
     if (target.isAnimal) {
       if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
       this.gatherTimer += dt;
       if (this.gatherTimer > 1.2) {
         this.gatherTimer = 0;
-        const drop = harvestAnimal(target);
+        let drop = null;
+        if (target.type === 'sheep') drop = shearAnimal(target);
+        if (!drop) drop = harvestAnimal(target);
         this.inventory[drop] = (this.inventory[drop] || 0) + 1;
         if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
       }
@@ -432,20 +459,63 @@ class Character {
     return tags;
   }
 
-  // モーダル/吹き出し表示用の「現在の気持ち」。言語レベルに関わらず常に日本語。
+  // モーダル/吹き出し表示用の「現在の気持ち」。言語レベルに関わらず常に日本語の
+  // 人間らしい独白として表示され、数秒間は同じ内容を保持する(頻繁に切り替わらないように)。
   getMoodText() {
     if (this.isDead) return '……';
-    switch (this.state) {
-      case STATES.SLEEP: return '眠っている';
-      case STATES.EAT: return 'ごはんを食べている';
-      case STATES.PRAY: return '天候に祈りを捧げている';
-      case STATES.SOCIAL: return '誰かと交流している';
-      case STATES.STEAL: return 'こっそり何かをしている…';
-      case STATES.GATHER: return this.emote || '作業に集中している';
-      case STATES.REST: return this.hunger < 30 ? 'お腹が空いている…' : '休憩している';
-      case STATES.MOVE_TO_TARGET: return '目的地へ向かっている';
-      default: return this.emote || '元気に過ごしている';
+
+    if (this._moodPhraseTimer == null) this._moodPhraseTimer = 0;
+    this._moodPhraseTimer -= 1 / 30; // getMoodTextは概ね毎フレーム呼ばれる想定の簡易減衰
+
+    if (this._moodPhraseTimer > 0 && this._moodPhraseState === this.state) {
+      return this._moodPhrase || this._pickMoodPhrase();
     }
+    return this._pickMoodPhrase();
+  }
+
+  _pickMoodPhrase() {
+    this._moodPhraseTimer = 4 + Math.random() * 3;
+    this._moodPhraseState = this.state;
+
+    if (this.hunger < 25 && this.state !== STATES.EAT) {
+      this._moodPhrase = pickMood(MOOD_PHRASES.HUNGRY);
+      return this._moodPhrase;
+    }
+
+    if ((this.state === STATES.WANDER || this.state === STATES.REST) && this._isNearWater() && Math.random() < 0.4) {
+      this._moodPhrase = pickMood(MOOD_PHRASES.LAKE_NEARBY);
+      return this._moodPhrase;
+    }
+
+    let pool;
+    switch (this.state) {
+      case STATES.SLEEP: pool = MOOD_PHRASES.SLEEP; break;
+      case STATES.EAT: pool = MOOD_PHRASES.EAT; break;
+      case STATES.PRAY: pool = MOOD_PHRASES.PRAY; break;
+      case STATES.SOCIAL: pool = MOOD_PHRASES.SOCIAL; break;
+      case STATES.STEAL: pool = MOOD_PHRASES.STEAL; break;
+      case STATES.MOVE_TO_TARGET: pool = MOOD_PHRASES.MOVE_TO_TARGET; break;
+      case STATES.REST: pool = MOOD_PHRASES.REST; break;
+      case STATES.GATHER: {
+        const type = this.gatherTarget && this.gatherTarget.type;
+        pool = MOOD_PHRASES['GATHER_' + type] || (this.gatherTarget && this.gatherTarget.isCrop ? MOOD_PHRASES.FARM : MOOD_PHRASES.GATHER_generic);
+        break;
+      }
+      default: pool = MOOD_PHRASES.WANDER;
+    }
+    this._moodPhrase = pickMood(pool || MOOD_PHRASES.WANDER);
+    return this._moodPhrase;
+  }
+
+  _isNearWater() {
+    const tx = Math.round(this.x), ty = Math.round(this.y);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const t = this.map.getTile(tx + dx, ty + dy);
+        if (t && (t.type === 'lake' || t.type === 'river' || t.type === 'sea')) return true;
+      }
+    }
+    return false;
   }
 
   serialize() {
