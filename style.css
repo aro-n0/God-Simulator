@@ -758,3 +758,69 @@ button:hover {
 .tag-ability { background: #3c6b8a; color: #fff; }
 .tag-title { background: #8a4fae; color: #fff; }
 .tag-inventory { background: #444; color: #fff; }
+
+/* キャラ/動物モーダル: ドット絵プレビューから吹き出しで「今の気持ち」を表現 */
+.famicom-sprite-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.mood-bubble {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  padding: 5px 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  min-width: 90px;
+  max-width: 200px;
+  text-align: center;
+  white-space: normal;
+}
+
+.mood-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid #000000;
+}
+
+.mood-bubble::before {
+  content: '';
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #ffffff;
+  z-index: 1;
+}
+
+@keyframes bubble-pop {
+  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  60% { transform: translateX(-50%) scale(1.08); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
+.mood-bubble.bubble-pop {
+  animation: bubble-pop 0.28s ease-out;
+}
+
+/* 動物詳細モーダル */
+#animal-modal-sprite {
+  image-rendering: pixelated;
+}
