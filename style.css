@@ -723,36 +723,6 @@ button:hover {
   margin-right: 6px;
 }
 
-/* この世界のルール モーダル */
-.rules-text {
-  white-space: pre-wrap;
-  font-size: 11px;
-  line-height: 1.7;
-  color: #ddd;
-  background: #0d1620;
-  border: 1px solid #333;
-  padding: 12px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.rules-table {
-  width: 100%;
-  margin-top: 10px;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-
-.rules-table th, .rules-table td {
-  border: 1px solid #444;
-  padding: 5px 8px;
-  text-align: left;
-}
-
-.rules-table th {
-  background: #1a2a38;
-  color: #9fe0a8;
-}
 
 /* キャラ詳細モーダルの追加タグ色 */
 .tag-ability { background: #3c6b8a; color: #fff; }
@@ -823,4 +793,31 @@ button:hover {
 /* 動物詳細モーダル */
 #animal-modal-sprite {
   image-rendering: pixelated;
+}
+
+/* キャラ詳細モーダル: 可変長タグをカテゴリごとに整理して表示 */
+.famicom-tags .tag-group {
+  margin-bottom: 8px;
+}
+
+.tag-group-label {
+  display: block;
+  font-size: 10px;
+  color: #9fe0a8;
+  margin-bottom: 3px;
+}
+
+.tag {
+  max-width: 220px;
+  word-break: break-word;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.tag-innate { background: #3c8a6b; color: #fff; }
+.tag-acquired { background: #b0703c; color: #fff; }
+
+#char-modal .famicom-modal-box,
+#animal-modal .famicom-modal-box {
+  width: 420px;
 }
