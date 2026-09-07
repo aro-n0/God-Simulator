@@ -47,7 +47,11 @@ function renderWorldList() {
       const world = getWorld(btn.dataset.id);
       if (world) {
         hideWorldSelect();
-        game = new Game({ seed: world.seed, characters: world.characters, worldId: world.id });
+        game = new Game({
+          seed: world.seed, characters: world.characters, worldId: world.id,
+          unlockedCodex: world.unlockedCodex, discoveredAnimalTypes: world.discoveredAnimalTypes,
+          buildings: world.buildings, groundItems: world.groundItems, dynamicItemRegistry: world.dynamicItemRegistry,
+        });
       }
     });
   });
