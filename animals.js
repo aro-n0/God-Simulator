@@ -1,18 +1,22 @@
 // animals.js
-// 鶏(肉/羽/卵)・牛(牛乳/肉)・豚(肉)・虎(牙/皮、危険)・羊(羊毛/羊肉)の簡易エンティティ。
-// map.animals 配列に格納され、main.jsのゲームループから updateAnimals() で毎フレーム更新される。
+// 鶏・牛・豚・虎・羊の簡易エンティティ。ドロップ品は厳密定義アイテム一覧に準拠する。
+// 通常のふれあい(乳搾り/採卵/毛刈り)は非致死でamountを繰り返し消費でき、
+// amountが尽きる最後の一撃だけ食肉がドロップして再湧きする。
+// 虎のみ危険な討伐対象で、HP/防御力/攻撃力/攻撃速度を持ち反撃してくる。
 
 const ANIMAL_DEFS = {
-  chicken: { amount: 3, respawnTime: 20, drops: ['egg', 'feather'], lethal: false, speed: 0.4 },
-  cow: { amount: 3, respawnTime: 25, drops: ['milk'], lethal: false, speed: 0.3 },
-  pig: { amount: 3, respawnTime: 30, drops: ['meat'], lethal: true, speed: 0.35 },
-  tiger: { amount: 2, respawnTime: 60, drops: ['fang', 'hide'], lethal: true, speed: 0.9, dangerous: true },
-  sheep: { amount: 3, respawnTime: 30, drops: ['meat'], lethal: true, speed: 0.32, shearCooldown: 12, woolDrop: 'wool' },
+  chicken: { amount: 3, respawnTime: 20, drops: ['卵', '羽'], meatDrop: '鶏肉', lethal: false, speed: 0.4, def: 0, atk: 0 },
+  cow: { amount: 3, respawnTime: 25, drops: ['牛乳'], meatDrop: '牛肉', lethal: false, speed: 0.3, def: 1, atk: 0 },
+  pig: { amount: 3, respawnTime: 30, drops: [], meatDrop: '豚肉', lethal: true, speed: 0.35, def: 1, atk: 0 },
+  sheep: { amount: 3, respawnTime: 30, drops: [], meatDrop: '羊肉', lethal: true, speed: 0.32, shearCooldown: 12, woolDrop: '羊毛', def: 1, atk: 0 },
+  tiger: {
+    amount: 60, respawnTime: 90, drops: [], meatDrop: null, huntDrops: ['牙', '虎皮'],
+    lethal: true, dangerous: true, speed: 0.9, def: 8, atk: 18, atkSpeed: 0.7,
+  },
 };
 
 const ANIMAL_NAME_JP = { chicken: '鶏', cow: '牛', pig: '豚', tiger: '虎', sheep: '羊' };
 
-// 動物専用の能力タグ(職業表示は不要のため代わりにこちらを表示する)
 const ANIMAL_TRAIT_TAGS = {
   chicken: ['早起き', '目ざとい'],
   cow: ['マイペース', 'もぐもぐ'],
@@ -40,11 +44,14 @@ function makeAnimal(type, x, y) {
     isAnimal: true,
     lethal: def.lethal,
     dangerous: !!def.dangerous,
+    def: def.def || 0,
+    atk: def.atk || 0,
+    atkSpeed: def.atkSpeed || 1,
+    attackTimer: 0,
     respawnTimer: 0,
     shearTimer: 0,
     wanderTarget: null,
     wanderTimer: 0,
-    attackCooldown: 0,
   };
 }
 
@@ -69,7 +76,7 @@ function getAnimalMood(animal) {
 // 動物の徘徊・被採取後の再湧きを処理する
 function updateAnimals(map, dt) {
   for (const a of map.animals) {
-    a.attackCooldown = Math.max(0, a.attackCooldown - dt);
+    a.attackTimer = Math.max(0, a.attackTimer - dt);
     a.shearTimer = Math.max(0, a.shearTimer - dt);
 
     if (a.amount <= 0) {
@@ -109,19 +116,36 @@ function updateAnimals(map, dt) {
   }
 }
 
-// 討伐(致死)による資源獲得。amountが0になれば respawnTimer 開始
+// 非致死のふれあい(乳搾り/採卵等)。amountが尽きる最後の一撃は食肉がドロップする
 function harvestAnimal(animal) {
   const def = ANIMAL_DEFS[animal.type];
-  const drop = def.drops[Math.floor(Math.random() * def.drops.length)];
   animal.amount -= 1;
-  if (animal.amount <= 0) animal.respawnTimer = def.respawnTime;
+  let drop;
+  if (animal.amount <= 0) {
+    drop = def.meatDrop || (def.drops.length ? def.drops[0] : null);
+    animal.respawnTimer = def.respawnTime;
+  } else {
+    drop = def.drops.length ? def.drops[Math.floor(Math.random() * def.drops.length)] : def.meatDrop;
+  }
   return drop;
 }
 
-// 羊毛刈り(非致死・クールダイン制、羊のみ)。刈れない場合はnullを返す
+// 羊毛刈り(非致死・クールダウン制、羊のみ)。刈れない場合はnullを返す
 function shearAnimal(animal) {
   if (animal.type !== 'sheep') return null;
   if (animal.shearTimer > 0) return null;
   animal.shearTimer = ANIMAL_DEFS.sheep.shearCooldown;
   return ANIMAL_DEFS.sheep.woolDrop;
+}
+
+// 虎討伐(危険な討伐対象)。ダメージ計算はmax(0, 攻撃力-防御力)。倒すと牙/虎皮をドロップする
+function attackDangerousAnimal(animal, attackerAtk) {
+  const damage = Math.max(0, attackerAtk - animal.def);
+  animal.amount = Math.max(0, animal.amount - damage);
+  if (animal.amount <= 0) {
+    const def = ANIMAL_DEFS[animal.type];
+    animal.respawnTimer = def.respawnTime;
+    return def.huntDrops || [];
+  }
+  return null;
 }
