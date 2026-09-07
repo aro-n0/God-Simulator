@@ -79,6 +79,11 @@ class Game {
     // 社会システムの間引きタイマー
     this._socialTimer = 3;
     this._villageTimer = 15;
+    this._codexTimer = 5;
+
+    // 能力・資格図鑑(発見・アンロック方式)
+    this.unlockedCodex = new Set(config.unlockedCodex || []);
+    this.discoveredAnimalTypes = new Set(config.discoveredAnimalTypes || []);
 
     // アイコンキャッシュ(木/巨木/岩/鉱石/作物/動物)
     this._buildIconCache();
@@ -91,7 +96,7 @@ class Game {
       this.seed = config.remoteInit.seed;
       this.map = new GameMap(this.seed);
       this.characters = config.remoteInit.characters.map((p) => {
-        const c = new Character(p, this.map, 50, 50);
+        const c = new Character(p, this.map, this.map.width / 2, this.map.height / 2);
         c.isRemoteMirror = true;
         return c;
       });
@@ -106,10 +111,17 @@ class Game {
           this.characters.push(new Character(saved.params, this.map, saved.x, saved.y, saved));
         }
       }
+      if (config.buildings) this.map.buildings = config.buildings;
+      if (config.groundItems) this.map.groundItems = config.groundItems;
+      if (config.dynamicItemRegistry) Object.assign(DYNAMIC_ITEM_REGISTRY, config.dynamicItemRegistry);
     }
 
     this.room = window.roomManager || null;
     if (this.room) this.room.attachGame(this);
+
+    // マップ中心にカメラを合わせる(マップサイズが可変のためここで確定させる)
+    this.camera.x = (this.map.width / 2) * TILE_SIZE;
+    this.camera.y = (this.map.height / 2) * TILE_SIZE;
 
     this._bindCreatorModal();
     this._bindSpeedControls();
@@ -127,6 +139,7 @@ class Game {
       ore: buildOreIcon(),
       giant_tree: buildGiantTreeIcon(),
       scorched_giant_tree: buildScorchedGiantTreeIcon(),
+      giant_hole: buildGiantHoleIcon(),
       fire: buildFireIcon(),
     };
     this.cropIcons = {};
@@ -137,6 +150,24 @@ class Game {
     ['chicken', 'cow', 'pig', 'tiger', 'sheep'].forEach((type) => {
       this.animalIcons[type] = buildAnimalIcon(type);
     });
+    this.buildingIconCache = {};
+    this.itemIconCache = {};
+    this.icons.campfire = buildCampfireIcon();
+  }
+
+  _getBuildingIcon(building) {
+    const key = building.type;
+    if (!this.buildingIconCache[key]) {
+      if (building.category === 'large_house') this.buildingIconCache[key] = buildLargeHouseIcon(building.theme);
+      else if (building.category === 'campfire') this.buildingIconCache[key] = buildCampfireIcon();
+      else this.buildingIconCache[key] = buildHouseIcon(building.theme);
+    }
+    return this.buildingIconCache[key];
+  }
+
+  _getItemIcon(itemId) {
+    if (!this.itemIconCache[itemId]) this.itemIconCache[itemId] = buildItemIcon(itemId);
+    return this.itemIconCache[itemId];
   }
 
   _startAutosave() {
@@ -146,7 +177,15 @@ class Game {
 
   _saveWorld() {
     if (!this.worldId || this.isObserverMode) return;
-    updateWorldData(this.worldId, { seed: this.seed, characters: this.characters.map((c) => c.fullSerialize()) });
+    updateWorldData(this.worldId, {
+      seed: this.seed,
+      characters: this.characters.map((c) => c.fullSerialize()),
+      unlockedCodex: Array.from(this.unlockedCodex),
+      discoveredAnimalTypes: Array.from(this.discoveredAnimalTypes),
+      buildings: this.map.buildings,
+      groundItems: this.map.groundItems,
+      dynamicItemRegistry: DYNAMIC_ITEM_REGISTRY,
+    });
   }
 
   _resizeCanvas() {
@@ -309,7 +348,8 @@ class Game {
     document.getElementById('char-modal-close').addEventListener('click', () => this._closeModal('char-modal'));
     document.getElementById('roster-modal-close').addEventListener('click', () => this._closeModal('roster-modal'));
     document.getElementById('animal-modal-close').addEventListener('click', () => this._closeModal('animal-modal'));
-    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal'].forEach((id) => {
+    document.getElementById('codex-modal-close').addEventListener('click', () => this._closeModal('codex-modal'));
+    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal', 'codex-modal'].forEach((id) => {
       const modal = document.getElementById(id);
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
     });
@@ -318,12 +358,46 @@ class Game {
       this._renderRoster();
       document.getElementById('roster-modal').classList.add('open');
     });
+    document.getElementById('btn-open-codex').addEventListener('click', () => {
+      this._renderCodex();
+      document.getElementById('codex-modal').classList.add('open');
+    });
   }
 
   _closeModal(id) {
     document.getElementById(id).classList.remove('open');
     if (id === 'char-modal') this._modalChar = null;
     if (id === 'animal-modal') this._modalAnimal = null;
+  }
+
+  _updateCodexUnlocks() {
+    for (const c of this.characters) {
+      (c.qualifications || []).forEach((q) => this.unlockedCodex.add(q));
+      c.getAbilityTags().forEach((a) => this.unlockedCodex.add(a));
+    }
+    for (const type of this.discoveredAnimalTypes) {
+      getAnimalTraits(type).forEach((t) => this.unlockedCodex.add(t));
+    }
+  }
+
+  _renderCodex() {
+    const listEl = document.getElementById('codex-list');
+    listEl.innerHTML = '';
+    ['資格', '能力', '動物特性'].forEach((cat) => {
+      const section = document.createElement('div');
+      section.className = 'codex-section';
+      section.innerHTML = `<h3>${cat}</h3>`;
+      CODEX_ENTRIES.filter((e) => e.category === cat).forEach((e) => {
+        const unlocked = this.unlockedCodex.has(e.id);
+        const row = document.createElement('div');
+        row.className = 'codex-item' + (unlocked ? '' : ' locked');
+        row.innerHTML = unlocked
+          ? `<span class="codex-label">[${e.category}: ${e.id}]</span><span class="codex-desc">${e.description}</span>`
+          : `<span class="codex-label">[${e.category}: ???]</span><span class="codex-desc">未発見</span>`;
+        section.appendChild(row);
+      });
+      listEl.appendChild(section);
+    });
   }
 
   _renderRoster() {
@@ -379,6 +453,7 @@ class Game {
 
   _openAnimalModal(a) {
     this._modalAnimal = a;
+    this.discoveredAnimalTypes.add(a.type);
     this._refreshAnimalModal();
     document.getElementById('animal-modal').classList.add('open');
   }
@@ -394,6 +469,13 @@ class Game {
 
     document.getElementById('animal-modal-name').textContent = getAnimalDisplayName(a.type);
     document.getElementById('animal-modal-status').textContent = `元気度 ${a.amount}/${a.maxAmount}`;
+    const combatRow = document.getElementById('animal-modal-combat-row');
+    if (a.dangerous) {
+      combatRow.style.display = '';
+      document.getElementById('animal-modal-combat').textContent = `${a.atk} / ${a.def} / ${a.atkSpeed.toFixed(1)}`;
+    } else {
+      combatRow.style.display = 'none';
+    }
 
     const bubble = document.getElementById('animal-modal-mood-bubble');
     const newMood = getAnimalMood(a);
@@ -426,12 +508,15 @@ class Game {
 
     document.getElementById('char-modal-name').textContent = c.params.name;
     document.getElementById('char-modal-affiliation').textContent = c.affiliation || '無所属';
-    document.getElementById('char-modal-job').textContent = c.dynamicJob || c.params.job || 'なし';
+    document.getElementById('char-modal-job').textContent = c.params.job || 'なし';
+    document.getElementById('char-modal-title').textContent = c.dynamicJob || '未確立';
     const bubble = document.getElementById('char-modal-mood-bubble');
     const newMood = c.getMoodText();
     if (bubble.textContent !== newMood) { bubble.textContent = newMood; this._retriggerBubble(bubble); }
     document.getElementById('char-modal-basestats').textContent =
       `${c.params.str || '-'} / ${c.params.agi || '-'} / ${c.params.int || '-'} / ${c.params.cha || '-'}`;
+    document.getElementById('char-modal-combat').textContent =
+      `${c.getEffectiveAtk()}(基礎${c.baseAtk}+装備${c._equipAtkBonus}) / ${c.getEffectiveDef()}(基礎${c.baseDef}+装備${c._equipDefBonus}) / ${c.atkSpeed.toFixed(1)}`;
     document.getElementById('char-modal-vitals').textContent =
       `${Math.round(c.hp)} / ${Math.round(c.hunger)} / ${Math.round(100 - c.stamina)}`;
     document.getElementById('char-modal-age').textContent =
@@ -450,10 +535,11 @@ class Game {
     fill('char-modal-innate-tags', c.params.personalityTags, 'tag-innate', null);
     fill('char-modal-acquired-tags', c.acquiredPersonality, 'tag-acquired', null);
     fill('char-modal-ability-tags', c.getAbilityTags(), 'tag-ability', '能力');
+    fill('char-modal-qualifications', c.qualifications, 'tag-qualification', '資格');
     fill('char-modal-title-tags', c.titleTags, 'tag-title', '肩書き');
     fill('char-modal-likes', c.params.likes, 'tag-like', '好き');
     fill('char-modal-dislikes', c.params.dislikes, 'tag-dislike', '苦手');
-    const invEntries = Object.keys(c.inventory || {}).filter((k) => c.inventory[k] > 0).map((k) => `${k}x${c.inventory[k]}`);
+    const invEntries = c.inventorySlots.filter((s) => s && s.count > 0).map((s) => `${s.item}x${s.count}`);
     fill('char-modal-inventory', invEntries, 'tag-inventory', null);
   }
 
@@ -516,11 +602,10 @@ class Game {
         const tryTheft = (thief, victim) => {
           if (thief.hunger < 15 && !thief.hasFood() && thief.stamina < 35 && victim.hasFood() && (thief.affinity[victim.id] || 0) < 20) {
             if (Math.random() < 0.15) {
-              const key = victim._bestFoodKey();
+              const key = victim.getBestFoodItem();
               if (key) {
-                victim.inventory[key] -= 1;
-                if (victim.inventory[key] <= 0) delete victim.inventory[key];
-                thief.inventory[key] = (thief.inventory[key] || 0) + 1;
+                const moved = victim.removeFromInventory(key, 1);
+                if (moved > 0) thief.addToInventory(key, 1);
                 victim.affinity[thief.id] = Math.max(0, (victim.affinity[thief.id] || 0) - 30);
                 thief.state = STATES.STEAL; thief.actionTimer = 1.5; thief._setEmote('盗んでしまった…');
                 thief.actionCounts.stealing += 1;
@@ -611,6 +696,8 @@ class Game {
       if (this._socialTimer <= 0) { this._socialTimer = 3; this._updateSocialSystems(); }
       this._villageTimer -= dt;
       if (this._villageTimer <= 0) { this._villageTimer = 15; this._updateVillages(); }
+      this._codexTimer -= dt;
+      if (this._codexTimer <= 0) { this._codexTimer = 5; this._updateCodexUnlocks(); }
     }
 
     if (this._modalChar) {
@@ -703,37 +790,59 @@ class Game {
       ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize / 2, iconSize, iconSize);
     }
 
+    // 建築物(キャラクターが建てた家・焚き火・大型建築)
+    for (const b of this.map.buildings) {
+      if (b.x < x0 - 4 || b.x > x1 + 4 || b.y < y0 - 4 || b.y > y1 + 4) continue;
+      const icon = this._getBuildingIcon(b);
+      const screen = this.camera.worldToScreen(b.x * TILE_SIZE, b.y * TILE_SIZE);
+      const sizeMul = b.category === 'large_house' ? 4 : b.category === 'campfire' ? 1 : 2;
+      const iconSize = ts * sizeMul;
+      ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize * 0.7, iconSize, iconSize);
+    }
+
+    // 地面に捨てられたアイテム(ポイ捨て。他の住民が拾える)
+    for (const g of this.map.groundItems) {
+      if (g.x < x0 || g.x > x1 || g.y < y0 || g.y > y1) continue;
+      const icon = this._getItemIcon(g.item);
+      const screen = this.camera.worldToScreen(g.x * TILE_SIZE + TILE_SIZE / 2, g.y * TILE_SIZE + TILE_SIZE / 2);
+      const iconSize = ts * 0.5;
+      ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize / 2, iconSize, iconSize);
+    }
+
     // 超巨大樹(燃焼中は延焼タイルを炎アイコンで強調表示。地形色自体は焼失に応じて変化する)
     if (this.map.giantTreeCenter) {
       const gt = this.map.giantTreeCenter;
-      if (gt.x + 6 >= x0 && gt.x - 6 <= x1 && gt.y + 6 >= y0 && gt.y - 6 <= y1) {
+      if (gt.x + 8 >= x0 && gt.x - 8 <= x1 && gt.y + 8 >= y0 && gt.y - 8 <= y1) {
         if (this.map.giantTreeBurning.size === 0 && !this.map.isGiantTreeFullyScorched()) {
           const screen = this.camera.worldToScreen(gt.x * TILE_SIZE + TILE_SIZE / 2, gt.y * TILE_SIZE + TILE_SIZE / 2);
-          const size = ts * 8.2;
+          const size = ts * 10.5;
           ctx.drawImage(this.icons.giant_tree, screen.x - size / 2, screen.y - size / 2, size, size);
         } else {
+          const screen = this.camera.worldToScreen(gt.x * TILE_SIZE + TILE_SIZE / 2, gt.y * TILE_SIZE + TILE_SIZE / 2);
+          const size = ts * 10.5;
+          ctx.drawImage(this.icons.scorched_giant_tree, screen.x - size / 2, screen.y - size / 2, size, size);
           for (const key of this.map.giantTreeBurning.keys()) {
             const [fx, fy] = key.split(',').map(Number);
-            const screen = this.camera.worldToScreen(fx * TILE_SIZE + TILE_SIZE / 2, fy * TILE_SIZE + TILE_SIZE / 2);
-            const size = ts * 0.9;
-            ctx.drawImage(this.icons.fire, screen.x - size / 2, screen.y - size / 2, size, size);
+            const fscreen = this.camera.worldToScreen(fx * TILE_SIZE + TILE_SIZE / 2, fy * TILE_SIZE + TILE_SIZE / 2);
+            const fsize = ts * 0.9;
+            ctx.drawImage(this.icons.fire, fscreen.x - fsize / 2, fscreen.y - fsize / 2, fsize, fsize);
           }
         }
       }
     }
 
-    // 大穴(世界に1つの巨大鉱脈)
+    // 大穴(メイドインアビス風の重層的な超巨大縦穴・世界に1つの巨大鉱脈)
     if (this.map.giantHoleCenter) {
       const gh = this.map.giantHoleCenter;
-      if (gh.x + 6 >= x0 && gh.x - 6 <= x1 && gh.y + 6 >= y0 && gh.y - 6 <= y1) {
+      if (gh.x + 8 >= x0 && gh.x - 8 <= x1 && gh.y + 8 >= y0 && gh.y - 8 <= y1) {
         const screen = this.camera.worldToScreen(gh.x * TILE_SIZE + TILE_SIZE / 2, gh.y * TILE_SIZE + TILE_SIZE / 2);
-        const size = ts * 7.8;
-        ctx.drawImage(this.icons.ore, screen.x - size / 2, screen.y - size / 2, size, size);
+        const size = ts * 9.5;
+        ctx.drawImage(this.icons.giant_hole, screen.x - size / 2, screen.y - size / 2, size, size);
       }
     }
 
-    // キャラクター(スプライトを1/4サイズで描画)
-    const humanScale = 0.28;
+    // キャラクター(人間サイズを縮小して描画)
+    const humanScale = 0.14;
     for (const c of this.characters) {
       const screen = this.camera.worldToScreen(c.x * TILE_SIZE, c.y * TILE_SIZE);
       const size = ts * humanScale * 3.4; // 見やすさを保ちつつ縮小
