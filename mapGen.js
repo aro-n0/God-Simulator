@@ -39,18 +39,20 @@ const TILE_SIZE = 16; // ワールド座標上の1タイルのピクセル基準
 
 const CROP_STAGE_DURATION = 12; // 1成長段階に必要な秒数（雨で短縮）
 const CROP_TYPES = ['wheat', 'apple', 'vegetable'];
-const LANDMARK_RADIUS = 3.4; // 巨大ランドマークの半径(タイル)。街1つ分・湖と同等の規模。
+const LANDMARK_RADIUS = 4.5; // 巨大ランドマークの半径(タイル)。街1つ分・湖と同等の規模。
 
 class GameMap {
-  constructor(seed, width = 100, height = 100) {
+  constructor(seed, width = 200, height = 200) {
     this.seed = seed >>> 0;
     this.width = width;
     this.height = height;
     this.noise = new ValueNoise2D(this.seed);
     this.tiles = [];
-    this.resources = []; // { x,y,type:'tree'|'big_tree'|'stone'|'ore'|'fish', amount, isWater? }
+    this.resources = []; // { x,y,type:'tree'|'big_tree'|'stone'|'ore'|'water'|'sand', amount, isWater? }
     this.crops = []; // { x,y,type, stage(0-3), timer }
     this.animals = []; // animals.js が生成/更新する
+    this.buildings = []; // キャラクターが建設した建物(ワールド保存データ側で復元)
+    this.groundItems = []; // ポイ捨てされたアイテム({x,y,item,count})
     this.giantHoleCenter = null;
     this.giantTreeCenter = null;
     this.giantTreeTiles = [];
@@ -167,7 +169,10 @@ class GameMap {
             break;
           case TILE_TYPES.RIVER:
           case TILE_TYPES.LAKE:
-            if (rand() < 0.35) this.resources.push({ x, y, type: 'fish', amount: Infinity, isWater: true });
+            if (rand() < 0.35) this.resources.push({ x, y, type: 'water', amount: Infinity, isWater: true });
+            break;
+          case TILE_TYPES.BEACH:
+            if (rand() < 0.3) this.resources.push({ x, y, type: 'sand', amount: Infinity });
             break;
         }
         if ((t.type === TILE_TYPES.FOREST || t.type === TILE_TYPES.BIG_FOREST) && rand() < 0.0009) {
