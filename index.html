@@ -18,6 +18,7 @@
     <span class="brand">🌱 AI自律文明 PoC</span>
     <button id="btn-open-creator">住民を作成</button>
     <button id="btn-open-roster">キャラ一覧</button>
+    <button id="btn-open-codex">能力・資格一覧</button>
     <span class="speed-group">
       <button id="btn-speed-0" class="speed-btn">x0</button>
       <button id="btn-speed-1" class="speed-btn active">x1</button>
@@ -134,19 +135,24 @@
           <div class="famicom-name" id="char-modal-name">-</div>
           <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
           <div class="famicom-row">職業: <span id="char-modal-job">-</span></div>
+          <div class="famicom-row">称号: <span id="char-modal-title">-</span></div>
           <div class="famicom-row">STR/AGI/INT/CHA: <span id="char-modal-basestats">-</span></div>
+          <div class="famicom-row">攻撃力/防御力/攻撃速度: <span id="char-modal-combat">-</span></div>
           <div class="famicom-row">HP/空腹/疲労: <span id="char-modal-vitals">-</span></div>
           <div class="famicom-row">年齢/言語Lv: <span id="char-modal-age">-</span></div>
         </div>
       </div>
+      <div class="famicom-modal-scroll">
       <div class="famicom-tags">
         <div class="tag-group"><span class="tag-group-label">先天性性格</span><div id="char-modal-innate-tags" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">後天性性格</span><div id="char-modal-acquired-tags" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">能力</span><div id="char-modal-ability-tags" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">資格</span><div id="char-modal-qualifications" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">肩書き</span><div id="char-modal-title-tags" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">好きなこと</span><div id="char-modal-likes" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">苦手なこと</span><div id="char-modal-dislikes" class="tag-row"></div></div>
-        <div class="tag-group"><span class="tag-group-label">持ち物</span><div id="char-modal-inventory" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">持ち物(最大10スロット)</span><div id="char-modal-inventory" class="tag-row"></div></div>
+      </div>
       </div>
     </div>
   </div>
@@ -163,11 +169,23 @@
         <div class="famicom-info">
           <div class="famicom-name" id="animal-modal-name">-</div>
           <div class="famicom-row">状態: <span id="animal-modal-status">-</span></div>
+          <div class="famicom-row" id="animal-modal-combat-row" style="display:none;">攻撃力/防御力/攻撃速度: <span id="animal-modal-combat">-</span></div>
         </div>
       </div>
+      <div class="famicom-modal-scroll">
       <div class="famicom-tags">
         <div id="animal-modal-traits" class="tag-row"></div>
       </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 能力・資格図鑑 -->
+  <div id="codex-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="codex-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title">能力・資格一覧</h2>
+      <div id="codex-list" class="famicom-modal-scroll codex-scroll"></div>
     </div>
   </div>
 
@@ -178,6 +196,8 @@
   <script src="./mapGen.js"></script>
   <script src="./camera.js"></script>
   <script src="./spriteGen.js"></script>
+  <script src="./itemRegistry.js"></script>
+  <script src="./buildings.js"></script>
   <script src="./animals.js"></script>
   <script src="./worldRules.js"></script>
   <script src="./personalityData.js"></script>
