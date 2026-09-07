@@ -58,7 +58,7 @@ const FOOD_VALUES = {
 // 素材の精製(伐採/採掘した原材料を加工品に変える。休憩中にまれに行う)
 const RAW_TO_PROCESSED = { 原木: '木材', 石: '石材', 鉄鉱石: '鉄', 金鉱石: '金' };
 
-const AGE_YEARS_PER_DAY = 3; // 1ゲーム内日 = 3年(短時間で寿命を観測できるようにする調整値)
+const AGE_YEARS_PER_DAY = 1; // 1ゲーム内日 = 1年
 const ADULT_AGE = 16;
 const CROP_TO_ITEM = { wheat: '小麦', apple: 'リンゴ', vegetable: '野菜' };
 const INVENTORY_SLOT_COUNT = 10; // マイクラ風: 所持スロットは10個固定
