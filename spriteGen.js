@@ -325,48 +325,125 @@ function buildCropIcon(type, stage) {
   } else if (stage === 2) {
     _px(ctx, 3, 2, 6, 7, '#3f8a44');
     _px(ctx, 4, 1, 4, 3, '#57ab5c');
+  } else if (type === 'wheat') {
+    // 麦: 縦の茎+穂先が扇状に広がる金色の穂
+    _px(ctx, 5, 4, 2, 6, '#8a6a2c');
+    _px(ctx, 2, 5, 2, 5, '#6e5424');
+    _px(ctx, 8, 5, 2, 5, '#6e5424');
+    _px(ctx, 3, 0, 6, 5, '#e0c23c');
+    _px(ctx, 1, 2, 3, 4, '#e6cc55');
+    _px(ctx, 8, 2, 3, 4, '#e6cc55');
+  } else if (type === 'apple') {
+    // リンゴ: 緑の樹冠に赤い実が複数実る様子
+    _px(ctx, 3, 1, 6, 6, '#3f8a44');
+    _px(ctx, 2, 3, 2, 2, '#c94b4b');
+    _px(ctx, 8, 3, 2, 2, '#c94b4b');
+    _px(ctx, 5, 6, 2, 2, '#c94b4b');
+    _px(ctx, 5, 0, 1, 2, '#5a3d24');
   } else {
-    _px(ctx, 3, 2, 6, 7, '#2f6a34');
-    const ripeColor = type === 'wheat' ? '#e0c23c' : type === 'apple' ? '#c94b4b' : '#8ae06e';
-    _px(ctx, 2, 0, 8, 4, ripeColor);
+    // 野菜: 丸く重なる葉が広がるキャベツ状の株
+    _px(ctx, 2, 3, 8, 6, '#2f6a34');
+    _px(ctx, 3, 1, 6, 4, '#4fae5e');
+    _px(ctx, 4, 4, 4, 4, '#8ae06e');
   }
   return cnv;
 }
 
 // ============ 超巨大ランドマーク用アイコン ============
 
+// 超巨大樹(リゼロ・フリューゲル大樹を彷彿とさせる、雲を突き抜ける圧倒的な巨木)
 function buildGiantTreeIcon() {
-  const size = 40;
+  const size = 64;
   const cnv = document.createElement('canvas');
   cnv.width = size; cnv.height = size;
   const ctx = cnv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  _px(ctx, 3, 3, 34, 34, '#0c2810');
-  _px(ctx, 1, 8, 38, 24, '#0c2810');
-  _px(ctx, 8, 0, 24, 9, '#0c2810');
-  _px(ctx, 6, 6, 28, 27, '#173a1c');
-  _px(ctx, 10, 10, 20, 19, '#245c2b');
-  _px(ctx, 14, 13, 12, 12, '#357f3d');
-  _px(ctx, 17, 15, 6, 6, '#4fae5e');
-  // 途方もない幹(年輪を強調)
-  _px(ctx, 15, 30, 10, 10, '#2c1c10');
-  _px(ctx, 17, 32, 6, 6, '#3d2a16');
-  _px(ctx, 19, 34, 2, 2, '#523a1e');
+
+  // 幾重にも層を重ねた広大な樹冠(外側は暗く、内側にいくほど明るい)
+  _px(ctx, 2, 2, 60, 56, '#08200c');
+  _px(ctx, 6, 6, 52, 48, '#0f3013');
+  _px(ctx, 11, 4, 42, 14, '#0f3013');
+  _px(ctx, 10, 10, 44, 40, '#173a1c');
+  _px(ctx, 15, 15, 34, 32, '#1f4a24');
+  _px(ctx, 20, 19, 24, 24, '#2c6531');
+  _px(ctx, 24, 22, 16, 17, '#3f8a44');
+  _px(ctx, 27, 24, 10, 10, '#57ab5c');
+
+  // 雲を突き抜ける様子を示す白い雲霧の切れ端
+  _px(ctx, 4, 8, 12, 5, 'rgba(255,255,255,0.55)');
+  _px(ctx, 44, 3, 14, 6, 'rgba(255,255,255,0.5)');
+  _px(ctx, 2, 24, 9, 4, 'rgba(255,255,255,0.4)');
+  _px(ctx, 50, 20, 10, 4, 'rgba(255,255,255,0.4)');
+
+  // 途方もない幹(年輪と根を強調)
+  _px(ctx, 24, 46, 16, 16, '#2c1c10');
+  _px(ctx, 27, 49, 10, 10, '#3d2a16');
+  _px(ctx, 30, 52, 4, 4, '#523a1e');
+  _px(ctx, 16, 58, 8, 4, '#2c1c10');
+  _px(ctx, 40, 58, 8, 4, '#2c1c10');
   return cnv;
 }
 
 function buildScorchedGiantTreeIcon() {
-  const size = 40;
+  const size = 64;
   const cnv = document.createElement('canvas');
   cnv.width = size; cnv.height = size;
   const ctx = cnv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  _px(ctx, 6, 6, 28, 30, '#1a1512');
-  _px(ctx, 10, 10, 20, 22, '#2b2420');
-  _px(ctx, 14, 14, 12, 14, '#3a322c');
+  _px(ctx, 8, 6, 48, 52, '#150f0d');
+  _px(ctx, 14, 12, 36, 40, '#241d19');
+  _px(ctx, 20, 18, 24, 28, '#332a24');
+  _px(ctx, 26, 24, 12, 18, '#463a32');
   // 焼け跡の裂け目(灰色のひび)
-  _px(ctx, 18, 8, 3, 24, '#4a4038');
-  _px(ctx, 22, 20, 3, 12, '#4a4038');
+  _px(ctx, 30, 10, 4, 44, '#59493f');
+  _px(ctx, 38, 30, 4, 24, '#59493f');
+  _px(ctx, 22, 34, 4, 18, '#59493f');
+  return cnv;
+}
+
+// 大穴(メイドインアビスの「深穴」を思わせる、重層的で神秘的な超巨大縦穴)
+function buildGiantHoleIcon() {
+  const size = 64;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  // 地表付近(緑がかった縁)から深層(青紫〜漆黒)へのグラデーション状の同心円層
+  const layers = [
+    { r: 32, color: '#3c5c3a' },
+    { r: 28, color: '#2c4a38' },
+    { r: 24, color: '#22403c' },
+    { r: 20, color: '#1a3440' },
+    { r: 16, color: '#152840' },
+    { r: 12, color: '#101c38' },
+    { r: 8, color: '#0a1228' },
+    { r: 4, color: '#2a3a6a' }, // 最深部の神秘的な発光
+  ];
+  const cx = size / 2, cy = size / 2;
+  for (const layer of layers) {
+    ctx.fillStyle = layer.color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, layer.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // 最深部の淡い光
+  ctx.fillStyle = 'rgba(150,190,255,0.5)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 縁に露出した鉱脈(きらめく鉱石の点在)
+  const veins = [[10, 14], [50, 12], [8, 46], [52, 48], [30, 6], [30, 58], [6, 30], [56, 30]];
+  veins.forEach(([vx, vy]) => _px(ctx, vx, vy, 3, 3, '#e6c85c'));
+
+  // 縁の岩肌の凹凸(明暗の縁取り)
+  ctx.strokeStyle = '#1a0f08';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 33, 0, Math.PI * 2);
+  ctx.stroke();
+
   return cnv;
 }
 
@@ -420,13 +497,29 @@ function buildAnimalIcon(type) {
       _px(ctx, 9, 13, 2, 2, '#d89aa2');
       break;
     case 'tiger':
-      _px(ctx, 2, 5, 12, 8, '#e0902c');
-      _px(ctx, 3, 6, 2, 6, '#2b2b2b');
-      _px(ctx, 7, 5, 2, 7, '#2b2b2b');
-      _px(ctx, 11, 6, 2, 6, '#2b2b2b');
-      _px(ctx, 4, 3, 6, 3, '#e0902c');
-      _px(ctx, 4, 2, 1, 2, '#2b2b2b');
-      _px(ctx, 9, 2, 1, 2, '#2b2b2b');
+      // 胴体(オレンジ)+縞模様+耳+尻尾+顔立ちを明確化し、一目で虎とわかるように強化
+      _px(ctx, 2, 6, 12, 7, '#e0902c');
+      _px(ctx, 1, 7, 2, 4, '#e0902c'); // 尻尾の付け根
+      _px(ctx, 0, 8, 2, 2, '#e0902c'); // 尻尾の先
+      _px(ctx, 4, 3, 7, 4, '#e0902c'); // 頭
+      _px(ctx, 3, 2, 2, 2, '#e0902c'); // 左耳
+      _px(ctx, 9, 2, 2, 2, '#e0902c'); // 右耳
+      _px(ctx, 3, 2, 1, 1, '#2b2b2b');
+      _px(ctx, 10, 2, 1, 1, '#2b2b2b');
+      // 縞模様
+      _px(ctx, 3, 7, 1, 5, '#2b2b2b');
+      _px(ctx, 6, 6, 1, 6, '#2b2b2b');
+      _px(ctx, 9, 7, 1, 5, '#2b2b2b');
+      _px(ctx, 12, 6, 1, 6, '#2b2b2b');
+      _px(ctx, 5, 3, 1, 3, '#2b2b2b');
+      _px(ctx, 8, 3, 1, 3, '#2b2b2b');
+      // 顔(白い口元と目)
+      _px(ctx, 5, 5, 4, 2, '#f5efe0');
+      _px(ctx, 5, 4, 1, 1, '#f5c542');
+      _px(ctx, 8, 4, 1, 1, '#f5c542');
+      // 脚
+      _px(ctx, 3, 13, 2, 2, '#c97a1c');
+      _px(ctx, 10, 13, 2, 2, '#c97a1c');
       break;
     case 'sheep':
       _px(ctx, 2, 4, 12, 9, '#f5f2e8');
@@ -440,5 +533,77 @@ function buildAnimalIcon(type) {
     default:
       _px(ctx, 4, 4, 8, 8, '#cccccc');
   }
+  return cnv;
+}
+
+
+// ============ 建築物アイコン(壁・屋根・ドアの基本構造にテーマ配色を適用) ============
+
+const HOUSE_THEMES = {
+  wood: { wall: '#a9793f', wallShade: '#8a5a35', roof: '#6b3a2b', roofShade: '#4a2818', door: '#3a2a18' },
+  stone: { wall: '#a0a0a0', wallShade: '#7d7d7d', roof: '#5c5c5c', roofShade: '#3a3a3a', door: '#2b2b2b' },
+  hide: { wall: '#e0902c', wallShade: '#b5701c', roof: '#6b4a2b', roofShade: '#4a3218', door: '#3a2a18' },
+  clay: { wall: '#c9a86b', wallShade: '#a6874f', roof: '#8a5a35', roofShade: '#6b4226', door: '#3a2a18' },
+  gold: { wall: '#d8c48a', wallShade: '#b89050', roof: '#e6c23c', roofShade: '#b89020', door: '#3a2a18' },
+};
+
+// 家(キャラクターの2倍ほどのサイズを想定した簡易ドット絵。壁+屋根+ドアの基本構造)
+function buildHouseIcon(theme) {
+  const size = 28;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const t = HOUSE_THEMES[theme] || HOUSE_THEMES.wood;
+
+  _px(ctx, 3, 14, 22, 12, t.wallShade);
+  _px(ctx, 4, 13, 20, 12, t.wall);
+  _px(ctx, 1, 10, 26, 5, t.roofShade);
+  _px(ctx, 3, 6, 22, 6, t.roof);
+  _px(ctx, 6, 3, 16, 4, t.roof);
+  _px(ctx, 12, 18, 5, 8, t.door);
+  _px(ctx, 7, 17, 3, 3, '#cde8f5');
+  _px(ctx, 18, 17, 3, 3, '#cde8f5');
+  if (theme === 'hide') {
+    _px(ctx, 6, 15, 2, 9, t.wallShade);
+    _px(ctx, 20, 15, 2, 9, t.wallShade);
+  }
+  return cnv;
+}
+
+// 大型建築物(キャラクターの4倍ほどのサイズ。二段屋根・柱・大扉を備えた壮麗な建物)
+function buildLargeHouseIcon(theme) {
+  const size = 48;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const t = HOUSE_THEMES[theme] || HOUSE_THEMES.stone;
+
+  _px(ctx, 4, 24, 40, 22, t.wallShade);
+  _px(ctx, 6, 22, 36, 22, t.wall);
+  _px(ctx, 1, 16, 46, 8, t.roofShade);
+  _px(ctx, 5, 9, 38, 9, t.roof);
+  _px(ctx, 11, 3, 26, 8, t.roof);
+  _px(ctx, 8, 24, 3, 20, t.roofShade);
+  _px(ctx, 37, 24, 3, 20, t.roofShade);
+  _px(ctx, 20, 32, 8, 14, t.door);
+  _px(ctx, 12, 28, 4, 4, '#cde8f5');
+  _px(ctx, 32, 28, 4, 4, '#cde8f5');
+  if (theme === 'gold') _px(ctx, 20, 3, 8, 3, '#f5e07a');
+  return cnv;
+}
+
+function buildCampfireIcon() {
+  const size = 14;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 2, 10, 10, 3, '#5c5c5c');
+  _px(ctx, 5, 6, 2, 5, '#6b4a2b');
+  _px(ctx, 4, 4, 6, 4, '#c94b1a');
+  _px(ctx, 5, 2, 4, 4, '#e0902c');
+  _px(ctx, 6, 0, 2, 3, '#f0c23c');
   return cnv;
 }
