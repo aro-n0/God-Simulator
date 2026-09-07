@@ -53,13 +53,16 @@ function pickMood(arr) {
 }
 
 const FOOD_VALUES = {
-  wheat: 12, apple: 14, vegetable: 13, meat: 18, milk: 10, egg: 8, fish: 15,
-  bread: 32, cooked_meat: 36, cooked_fish: 30, cooked_vegetable: 28,
+  小麦: 12, リンゴ: 14, 野菜: 13, 牛肉: 20, 牛乳: 10, 卵: 8, 豚肉: 18, 鶏肉: 16, 羊肉: 19,
 };
-const RAW_TO_COOKED = { wheat: 'bread', meat: 'cooked_meat', fish: 'cooked_fish', vegetable: 'cooked_vegetable' };
+// 素材の精製(伐採/採掘した原材料を加工品に変える。休憩中にまれに行う)
+const RAW_TO_PROCESSED = { 原木: '木材', 石: '石材', 鉄鉱石: '鉄', 金鉱石: '金' };
 
 const AGE_YEARS_PER_DAY = 3; // 1ゲーム内日 = 3年(短時間で寿命を観測できるようにする調整値)
 const ADULT_AGE = 16;
+const CROP_TO_ITEM = { wheat: '小麦', apple: 'リンゴ', vegetable: '野菜' };
+const INVENTORY_SLOT_COUNT = 10; // マイクラ風: 所持スロットは10個固定
+const INVENTORY_STACK_LIMIT = 99; // 1スロットあたりの最大スタック数
 
 let _charIdCounter = 1;
 
@@ -83,7 +86,12 @@ class Character {
     this.actionTimer = 0;
     this.emote = '';
     this.emoteTimer = 0;
-    this.inventory = (restore && restore.inventory) || {};
+    this.inventorySlots = new Array(INVENTORY_SLOT_COUNT).fill(null);
+    if (restore && restore.inventorySlots) {
+      this.inventorySlots = restore.inventorySlots;
+    } else if (restore && restore.inventory) {
+      for (const key in restore.inventory) this.addToInventory(key, restore.inventory[key]);
+    }
     this.sprite = buildSpriteCanvas(params);
     this.facing = (restore && restore.facing) || 1;
     this.affiliation = (restore && restore.affiliation) || '無所属';
@@ -111,18 +119,32 @@ class Character {
     // 性格(先天性は誕生時に確定・以後不変。後天性は体験により追加/更新される)
     this.acquiredPersonality = (restore && restore.acquiredPersonality) || [];
     if (!this.params.personalityTags) this.params.personalityTags = pickInnateTraits();
-    this.dynamicJob = (restore && restore.dynamicJob) || null;
+    this.dynamicJob = (restore && restore.dynamicJob) || null; // AI創出の「称号」
+    this.qualifications = (restore && restore.qualifications) || []; // システム上の「資格」(累積保持)
     this._jobEvalCooldown = 8;
 
     // 体験トリガー用の行動カウンタ・一時フラグ(aiEngine.jsが参照)
     this.actionCounts = (restore && restore.actionCounts) || {
       woodcutting: 0, mining: 0, farming: 0, fishing: 0, cooking: 0,
-      praying: 0, socializing: 0, hunting: 0, tigerHunts: 0, stealing: 0, nightActivity: 0,
+      praying: 0, socializing: 0, hunting: 0, tigerHunts: 0, stealing: 0, nightActivity: 0, building: 0,
     };
     this.nightWaterTime = (restore && restore.nightWaterTime) || 0;
     this.stormHits = 0;
     this._crisisSurvived = false;
     this._bigGatherCrit = false;
+
+    // 戦闘ステータス(防御力/攻撃力/攻撃速度)。装備品の効果はインベントリから自動加算される
+    this.baseAtk = (restore && restore.baseAtk) || 5;
+    this.baseDef = (restore && restore.baseDef) || 5;
+    this.atkSpeed = (restore && restore.atkSpeed) || 1; // 初期値1: 1秒毎に1回攻撃
+    this._attackTimer = 0;
+    this._equipAtkBonus = 0;
+    this._equipDefBonus = 0;
+
+    // クラフト・建築・廃棄の間引きタイマー
+    this._craftCooldown = 6 + Math.random() * 6;
+    this._buildCooldown = 10 + Math.random() * 10;
+    this._disposalCooldown = 12 + Math.random() * 8;
 
     // 動的変化トラッキング
     this.gatherStreak = (restore && restore.gatherStreak) || { tree: 0, stone: 0, big_tree: 0 };
@@ -150,7 +172,7 @@ class Character {
     return best;
   }
 
-  // 空腹時に優先して探す食料源(完熟作物・収穫可能な動物・魚)
+  // 空腹時に優先して探す食料源(完熟作物・収穫可能な動物)
   findFoodSource(radius) {
     for (const crop of this.map.crops) {
       if (crop.stage < 3) continue;
@@ -163,23 +185,133 @@ class Character {
       const d = this.distTo(a.x, a.y);
       if (d < radius) return a;
     }
-    if (this.params.canFish) {
-      const fish = this.findNearbyResource(radius, (r) => r.type === 'fish');
-      if (fish) return fish;
-    }
     return null;
   }
 
-  hasFood() {
-    return Object.keys(this.inventory).some((k) => FOOD_VALUES[k] && this.inventory[k] > 0);
+  getEffectiveAtk() {
+    return this.baseAtk + this._equipAtkBonus;
   }
 
-  _bestFoodKey() {
-    let best = null, bestVal = -1;
-    for (const k in this.inventory) {
-      if (FOOD_VALUES[k] && this.inventory[k] > 0 && FOOD_VALUES[k] > bestVal) {
-        best = k; bestVal = FOOD_VALUES[k];
+  getEffectiveDef() {
+    return this.baseDef + this._equipDefBonus;
+  }
+
+  // インベントリ内の武器/防具を自動検出してステータス補正を再計算する(専用装備枠は持たない)
+  _updateEquipmentBonus() {
+    let atkB = 0, defB = 0;
+    for (const slot of this.inventorySlots) {
+      if (slot && isEquipment(slot.item)) {
+        const b = getEquipmentBonus(slot.item);
+        atkB += b.atk;
+        defB += b.def;
       }
+    }
+    this._equipAtkBonus = atkB;
+    this._equipDefBonus = defB;
+  }
+
+  // 素材からの動的クラフト、および建材が貯まった際の建築(コストは自ら評価し消費する)
+  _checkCraftingAndBuilding(dt) {
+    this._craftCooldown -= dt;
+    if (this._craftCooldown <= 0) {
+      this._craftCooldown = 10 + Math.random() * 10;
+      craftDynamicItem(this);
+    }
+    this._buildCooldown -= dt;
+    if (this._buildCooldown <= 0) {
+      this._buildCooldown = 20 + Math.random() * 20;
+      const built = tryConstructBuilding(this, this.map);
+      if (built) this.actionCounts.building += 1;
+    }
+  }
+
+  // 不要アイテムの廃棄(ポイ捨て/海捨て/燃焼/埋設)。インベントリが埋まってきた際に判断する
+  _checkDisposal(dt) {
+    this._disposalCooldown -= dt;
+    if (this._disposalCooldown > 0) return;
+    this._disposalCooldown = 15 + Math.random() * 15;
+
+    const usedSlots = this.inventorySlots.filter(Boolean).length;
+    if (usedSlots < this.inventorySlots.length) return; // 満杯でなければ廃棄しない
+
+    // 食料でも装備でもない、比較的余りやすい素材から処分先を選ぶ
+    const disposableSlot = this.inventorySlots.find((s) => s && !FOOD_VALUES[s.item] && !isEquipment(s.item));
+    if (!disposableSlot) return;
+    const item = disposableSlot.item;
+
+    const nearWater = this._isNearWater();
+    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && this.distTo(b.x, b.y) < 3);
+
+    let method;
+    if (nearWater) method = 'sea';
+    else if (nearFire) method = 'burn';
+    else method = Math.random() < 0.5 ? 'litter' : 'bury';
+
+    this.removeFromInventory(item, 1);
+    if (method === 'litter') {
+      this.map.groundItems.push({ x: Math.round(this.x), y: Math.round(this.y), item, count: 1 });
+      this._setEmote('ポイ捨てしてしまった…');
+    } else if (method === 'sea') {
+      this._setEmote('海に捨てた');
+    } else if (method === 'burn') {
+      this._setEmote('火にくべた');
+    } else {
+      this._setEmote('土に埋めた');
+    }
+  }
+
+  // ============ マイクラ風スロット式インベントリ(10スロット・1スロット最大99個) ============
+  addToInventory(item, qty) {
+    if (!item || qty <= 0) return 0;
+    const stackLimit = getItemStackLimit(item);
+    let remaining = qty;
+    for (const slot of this.inventorySlots) {
+      if (remaining <= 0) break;
+      if (slot && slot.item === item && slot.count < stackLimit) {
+        const space = stackLimit - slot.count;
+        const add = Math.min(space, remaining);
+        slot.count += add;
+        remaining -= add;
+      }
+    }
+    for (let i = 0; i < this.inventorySlots.length && remaining > 0; i++) {
+      if (!this.inventorySlots[i]) {
+        const add = Math.min(stackLimit, remaining);
+        this.inventorySlots[i] = { item, count: add };
+        remaining -= add;
+      }
+    }
+    return qty - remaining; // 実際に格納できた数(満杯の場合は一部/全部入らないことがある)
+  }
+
+  removeFromInventory(item, qty) {
+    let remaining = qty;
+    for (const slot of this.inventorySlots) {
+      if (remaining <= 0) break;
+      if (slot && slot.item === item) {
+        const take = Math.min(slot.count, remaining);
+        slot.count -= take;
+        remaining -= take;
+      }
+    }
+    for (let i = 0; i < this.inventorySlots.length; i++) {
+      if (this.inventorySlots[i] && this.inventorySlots[i].count <= 0) this.inventorySlots[i] = null;
+    }
+    return qty - remaining;
+  }
+
+  getItemCount(item) {
+    return this.inventorySlots.reduce((sum, s) => sum + (s && s.item === item ? s.count : 0), 0);
+  }
+
+  hasFood() {
+    return this.inventorySlots.some((s) => s && FOOD_VALUES[s.item] && s.count > 0);
+  }
+
+  getBestFoodItem() {
+    let best = null, bestVal = -1;
+    for (const s of this.inventorySlots) {
+      if (s && FOOD_VALUES[s.item] && FOOD_VALUES[s.item] > bestVal) { best = s.item; bestVal = FOOD_VALUES[s.item]; }
     }
     return best;
   }
@@ -277,15 +409,22 @@ class Character {
       this._jobEvalCooldown = 20;
       const title = evaluateJobTitle(this);
       if (title) this.dynamicJob = title;
+      evaluateQualifications(this);
     }
+
+    this._updateEquipmentBonus();
+    this._checkCraftingAndBuilding(dt);
+    this._checkDisposal(dt);
   }
 
   _startEat() {
-    const key = this._bestFoodKey();
+    const key = this.getBestFoodItem();
     if (!key) return;
-    this.inventory[key] -= 1;
-    if (this.inventory[key] <= 0) delete this.inventory[key];
-    this.hunger = Math.min(100, this.hunger + (FOOD_VALUES[key] || 10));
+    this.removeFromInventory(key, 1);
+    let value = FOOD_VALUES[key] || 10;
+    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && this.distTo(b.x, b.y) < 3);
+    if (nearFire) { value *= 1.5; this.actionCounts.cooking += 1; }
+    this.hunger = Math.min(100, this.hunger + value);
     this.state = STATES.EAT;
     this.actionTimer = 1.5;
     this._setEmote('食事中');
@@ -310,6 +449,17 @@ class Character {
       return;
     }
 
+    // 近くに落ちているアイテムがあれば拾う(ポイ捨てされた物を他人が拾得可能に)
+    const groundIdx = this.map.groundItems.findIndex((g) => this.distTo(g.x, g.y) < 1.2);
+    if (groundIdx !== -1) {
+      const g = this.map.groundItems[groundIdx];
+      const picked = this.addToInventory(g.item, g.count);
+      if (picked > 0) {
+        this.map.groundItems.splice(groundIdx, 1);
+        this._setEmote('何かを拾った');
+      }
+    }
+
     // 空腹なら食料源を優先探索、平常時は木/石などの資源探索
     let target = null;
     let isFood = false;
@@ -318,7 +468,7 @@ class Character {
       isFood = !!target;
     }
     if (!target && Math.random() < 0.02) {
-      target = this.findNearbyResource(12, (r) => r.type !== 'fish' || this.params.canFish);
+      target = this.findNearbyResource(12, null);
     }
     if (target) {
       this.gatherTarget = target;
@@ -377,7 +527,7 @@ class Character {
       if (this.gatherTimer > 1.5) {
         this.gatherTimer = 0;
         crop.stage = 0; crop.timer = 0;
-        this.inventory[crop.type] = (this.inventory[crop.type] || 0) + 1;
+        this.addToInventory(CROP_TO_ITEM[crop.type] || crop.type, 1);
         this.actionCounts.farming += 1;
         this.gatherTarget = null;
         this.state = STATES.WANDER;
@@ -388,24 +538,45 @@ class Character {
     // 動物(卵/牛乳/毛皮/肉、羊は毛刈り優先)
     if (target.isAnimal) {
       if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
+
+      if (target.dangerous) {
+        // 攻撃速度に応じた戦闘。ダメージ=max(0, 攻撃力-防御力)。相手も反撃してくる
+        this._attackTimer -= dt;
+        if (this._attackTimer <= 0) {
+          this._attackTimer = 1 / (this.atkSpeed || 1);
+          const drops = attackDangerousAnimal(target, this.getEffectiveAtk());
+          this.actionCounts.hunting += 1;
+          if (target.type === 'tiger') this.actionCounts.tigerHunts += 1;
+          if (drops) {
+            drops.forEach((d) => this.addToInventory(d, 1));
+            this.gatherTarget = null;
+            this.state = STATES.WANDER;
+            return;
+          }
+        }
+        target.attackTimer -= dt;
+        if (target.attackTimer <= 0) {
+          target.attackTimer = 1 / (target.atkSpeed || 1);
+          const dmg = Math.max(0, target.atk - this.getEffectiveDef());
+          this.hp = Math.max(0, this.hp - dmg);
+          if (this.hp <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
+        }
+        return;
+      }
+
       this.gatherTimer += dt;
       if (this.gatherTimer > 1.2) {
         this.gatherTimer = 0;
         let drop = null;
         if (target.type === 'sheep') drop = shearAnimal(target);
-        const wasHunt = !drop;
         if (!drop) drop = harvestAnimal(target);
-        this.inventory[drop] = (this.inventory[drop] || 0) + 1;
-        if (wasHunt) {
-          this.actionCounts.hunting += 1;
-          if (target.type === 'tiger') this.actionCounts.tigerHunts += 1;
-        }
+        this.addToInventory(drop, 1);
         if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
       }
       return;
     }
 
-    // 通常資源(木/巨木/石/鉱石/魚)
+    // 通常資源(木/巨木/石/鉱石/水/砂)
     if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; return; }
     this.gatherTimer += dt;
     const bonus = (this.params.gatherBonus && this.params.gatherBonus[target.type]) || 1;
@@ -414,15 +585,28 @@ class Character {
       this.gatherTimer = 0;
       const type = target.type;
       if (target.amount !== Infinity) target.amount -= 1;
-      this.inventory[type] = (this.inventory[type] || 0) + 1;
-      if (this.gatherStreak[type] != null) this.gatherStreak[type] += 1;
-      if (type === 'tree' || type === 'big_tree') this.actionCounts.woodcutting += 1;
-      if (type === 'stone') this.actionCounts.mining += 1;
-      if (type === 'ore') {
+
+      if (type === 'tree' || type === 'big_tree') {
+        this.addToInventory('原木', 1);
+        this.actionCounts.woodcutting += 1;
+        if (Math.random() < 0.15) this.addToInventory('枝', 1);
+        if (type === 'big_tree' && Math.random() < 0.03) this.addToInventory('伝説の枝', 1);
+      } else if (type === 'stone') {
+        this.addToInventory('石', 1);
+        this.actionCounts.mining += 1;
+        if (Math.random() < 0.2) this.addToInventory('土', 1);
+      } else if (type === 'ore') {
+        const oreItem = Math.random() < 0.7 ? '鉄鉱石' : '金鉱石';
+        this.addToInventory(oreItem, 1);
         this.actionCounts.mining += 1;
         if (target.isGiant && Math.random() < 0.1) this._bigGatherCrit = true;
+      } else if (type === 'water') {
+        this.addToInventory('水', 1);
+      } else if (type === 'sand') {
+        this.addToInventory('砂', 1);
       }
-      if (type === 'fish') this.actionCounts.fishing += 1;
+
+      if (this.gatherStreak[type] != null) this.gatherStreak[type] += 1;
       if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES['GATHER_' + type] || ['作業中']));
       if (target.amount <= 0) {
         this.gatherTarget = null;
@@ -437,16 +621,14 @@ class Character {
     this.stamina += dt * 8;
     this.restStreak += dt;
     if (Math.random() < 0.01) this._setEmote(pickEmote(EMOTES.REST));
-    // 生の食材を持っていれば休憩中に調理することがある
+    // 素材を精製することがある(原木→木材、石→石材、鉱石→金属)
     if (!this._cookedThisRest) {
-      const rawKey = Object.keys(RAW_TO_COOKED).find((k) => this.inventory[k] > 0);
+      const rawKey = Object.keys(RAW_TO_PROCESSED).find((k) => this.getItemCount(k) > 0);
       if (rawKey && Math.random() < 0.4) {
-        this.inventory[rawKey] -= 1;
-        if (this.inventory[rawKey] <= 0) delete this.inventory[rawKey];
-        const cooked = RAW_TO_COOKED[rawKey];
-        this.inventory[cooked] = (this.inventory[cooked] || 0) + 1;
-        this.actionCounts.cooking += 1;
-        this._setEmote('料理中');
+        this.removeFromInventory(rawKey, 1);
+        const processed = RAW_TO_PROCESSED[rawKey];
+        this.addToInventory(processed, 1);
+        this._setEmote('加工中');
       }
       this._cookedThisRest = true;
     }
@@ -563,13 +745,14 @@ class Character {
   fullSerialize() {
     return {
       id: this.id, params: this.params, x: this.x, y: this.y, state: this.state,
-      stamina: this.stamina, inventory: this.inventory, facing: this.facing,
+      stamina: this.stamina, inventorySlots: this.inventorySlots, facing: this.facing,
       affiliation: this.affiliation, gatherStreak: this.gatherStreak, restStreak: this.restStreak,
       rainExposure: this.rainExposure, hunger: this.hunger, hp: this.hp, gender: this.gender,
       ageYears: this.ageYears, lifespanYears: this.lifespanYears, languageLevel: this.languageLevel,
       languageProgress: this.languageProgress, partnerId: this.partnerId, titleTags: this.titleTags,
       prayCount: this.prayCount, affinity: this.affinity, acquiredPersonality: this.acquiredPersonality,
       dynamicJob: this.dynamicJob, actionCounts: this.actionCounts, nightWaterTime: this.nightWaterTime,
+      qualifications: this.qualifications, baseAtk: this.baseAtk, baseDef: this.baseDef, atkSpeed: this.atkSpeed,
     };
   }
 }
