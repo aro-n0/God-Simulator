@@ -130,13 +130,12 @@ function tryGenerateExperienceTags(character) {
 // ============ オリジナル職業の自動襲名 ============
 
 const JOB_TITLE_COMBOS = [
-  { keys: ['woodcutting', 'farming'], min: 18, title: '森の建築家' },
+  { keys: ['woodcutting', 'building'], min: 3, title: '森の建築家' },
   { keys: ['nightActivitySlow', 'tigerHunts'], min: 3, title: '漆黒の獣ハンター' },
   { keys: ['praying', 'cooking'], min: 8, title: '豊穣の神官シェフ' },
-  { keys: ['mining', 'trading'], min: 15, title: '山師商人' },
+  { keys: ['mining', 'building'], min: 3, title: '山師建築家' },
   { keys: ['farming', 'cooking'], min: 15, title: '実りの料理人' },
   { keys: ['socializing', 'praying'], min: 10, title: '心癒す語り部' },
-  { keys: ['fishing', 'cooking'], min: 12, title: '漁師料理人' },
   { keys: ['stealing', 'hunting'], min: 6, title: '影の狩人' },
 ];
 
@@ -149,6 +148,7 @@ const JOB_TITLE_SOLO = {
   praying: ['信心深き祈り手', '静寂の求道者'],
   socializing: ['人気者', '村のムードメーカー'],
   hunting: ['腕利きの狩人', '獣狩りの名手'],
+  building: ['街づくりの匠', '棟梁'],
 };
 
 function hashStr(str) {
@@ -178,3 +178,67 @@ function evaluateJobTitle(character) {
   }
   return null;
 }
+
+// ============ 基礎資格(システム上の行動権限)と動的肩書き(称号)の分離 ============
+// 「資格」は一度得ると失われない累積的な行動権限。「称号」(dynamicJob/evaluateJobTitle)は
+// AIが自由に創出・更新する演出的な二つ名であり、両者は明確に別管理とする。
+
+const QUALIFICATION_DEFS = {
+  伐採: '木材を効率よく伐採できる基礎資格',
+  採掘: '石材や鉱石を効率よく採掘できる基礎資格',
+  農耕: '作物を育て収穫できる基礎資格',
+  漁業: '川や海で魚を捕獲できる基礎資格',
+  料理: '食材を調理し、満腹度回復量の高い料理を作れる資格',
+  戦闘: '動物の討伐や危険な場面に対応できる資格',
+  交渉: '取引や交渉を得意とする資格',
+  魔術: '神秘的な力の素養を持つ資格',
+  建築: '建物を設計し組み立てる基礎資格',
+};
+
+// character.actionCounts/params.job を見て、未取得の資格があれば付与する(累積・一度得たら失わない)
+function evaluateQualifications(character) {
+  if (!character.qualifications) character.qualifications = [];
+  const have = new Set(character.qualifications);
+  const grant = (q) => { if (!have.has(q)) { character.qualifications.push(q); have.add(q); } };
+  const job = character.params.job;
+  const counts = character.actionCounts;
+
+  if (job === '木こり' || job === 'きこり' || counts.woodcutting >= 10) grant('伐採');
+  if (job === '鉱夫' || counts.mining >= 10) grant('採掘');
+  if (job === '農民' || counts.farming >= 10) grant('農耕');
+  if (character.params.canFish || counts.fishing >= 5) grant('漁業');
+  if (counts.cooking >= 5) grant('料理');
+  if (job === '兵士' || counts.hunting >= 3) grant('戦闘');
+  if (job === '商人') grant('交渉');
+  if (job === '魔法使い') grant('魔術');
+  if (counts.building >= 1) grant('建築');
+}
+
+// ============ 能力・資格図鑑(アンロック方式) ============
+
+const ABILITY_CODEX_DEFS = {
+  怪力: 'STRが高いキャラクターの証。重い荷物や力仕事を苦にしない',
+  俊足: 'AGIが高いキャラクターの証。移動速度が速い',
+  賢者: 'INTが高いキャラクターの証。学習・言語習得が早い',
+  人気者: 'CHAが高いキャラクターの証。周囲との交流で好感度が上がりやすい',
+  見習い: 'まだ特に秀でた能力を発揮していない',
+};
+
+const ANIMAL_ABILITY_CODEX_DEFS = {
+  早起き: '朝の訪れにいち早く気づく',
+  目ざとい: '周囲の変化によく気づく',
+  マイペース: '自分のペースを崩さない',
+  もぐもぐ: '食べることが好き',
+  食いしんぼう: 'とにかく食欲旺盛',
+  きれい好き: '体を清潔に保つ習性がある',
+  百獣の王: '森の頂点に立つ風格を持つ',
+  俊敏: '素早い身のこなしを持つ',
+  'モコモコ(耐寒)': 'ふわふわの毛で寒さに強い',
+  のんびり屋: 'いつも自分のペースでのんびりしている',
+};
+
+const CODEX_ENTRIES = [
+  ...Object.keys(QUALIFICATION_DEFS).map((id) => ({ id, category: '資格', description: QUALIFICATION_DEFS[id] })),
+  ...Object.keys(ABILITY_CODEX_DEFS).map((id) => ({ id, category: '能力', description: ABILITY_CODEX_DEFS[id] })),
+  ...Object.keys(ANIMAL_ABILITY_CODEX_DEFS).map((id) => ({ id, category: '動物特性', description: ANIMAL_ABILITY_CODEX_DEFS[id] })),
+];
