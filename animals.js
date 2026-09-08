@@ -5,7 +5,7 @@
 // 虎のみ危険な討伐対象で、HP/防御力/攻撃力/攻撃速度を持ち反撃してくる。
 
 const ANIMAL_DEFS = {
-  chicken: { amount: 3, respawnTime: 20, drops: ['卵', '羽'], meatDrop: '鶏肉', lethal: false, speed: 0.4, def: 0, atk: 0 },
+  chicken: { amount: 3, respawnTime: 20, drops: ['羽'], meatDrop: '鶏肉', lethal: false, speed: 0.4, def: 0, atk: 0, eggCooldown: 10, eggDrop: '卵' },
   cow: { amount: 3, respawnTime: 25, drops: ['牛乳'], meatDrop: '牛肉', lethal: false, speed: 0.3, def: 1, atk: 0 },
   pig: { amount: 3, respawnTime: 30, drops: [], meatDrop: '豚肉', lethal: true, speed: 0.35, def: 1, atk: 0 },
   sheep: { amount: 3, respawnTime: 30, drops: [], meatDrop: '羊肉', lethal: true, speed: 0.32, shearCooldown: 12, woolDrop: '羊毛', def: 1, atk: 0 },
@@ -50,6 +50,7 @@ function makeAnimal(type, x, y) {
     attackTimer: 0,
     respawnTimer: 0,
     shearTimer: 0,
+    eggTimer: 0,
     wanderTarget: null,
     wanderTimer: 0,
   };
@@ -78,6 +79,7 @@ function updateAnimals(map, dt) {
   for (const a of map.animals) {
     a.attackTimer = Math.max(0, a.attackTimer - dt);
     a.shearTimer = Math.max(0, a.shearTimer - dt);
+    a.eggTimer = Math.max(0, a.eggTimer - dt);
 
     if (a.amount <= 0) {
       a.respawnTimer -= dt;
@@ -108,7 +110,8 @@ function updateAnimals(map, dt) {
     const dy = a.wanderTarget.y - a.y;
     const d = Math.hypot(dx, dy);
     if (d > 0.1) {
-      const step = Math.min(def.speed * dt, d);
+      const waterMul = map.isWaterTile(a.x, a.y) ? 0.5 : 1;
+      const step = Math.min(def.speed * waterMul * dt, d);
       const nx = a.x + (dx / d) * step;
       const ny = a.y + (dy / d) * step;
       if (map.isWalkable(nx, ny)) { a.x = nx; a.y = ny; }
@@ -136,6 +139,15 @@ function shearAnimal(animal) {
   if (animal.shearTimer > 0) return null;
   animal.shearTimer = ANIMAL_DEFS.sheep.shearCooldown;
   return ANIMAL_DEFS.sheep.woolDrop;
+}
+
+// 採卵(非致死・クールダウン制、鶏のみ)。生めない場合はnullを返す
+function layEgg(animal) {
+  if (animal.type !== 'chicken') return null;
+  const def = ANIMAL_DEFS.chicken;
+  if (animal.eggTimer > 0) return null;
+  animal.eggTimer = def.eggCooldown;
+  return def.eggDrop;
 }
 
 // 虎討伐(危険な討伐対象)。ダメージ計算はmax(0, 攻撃力-防御力)。倒すと牙/虎皮をドロップする
