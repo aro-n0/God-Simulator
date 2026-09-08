@@ -115,7 +115,7 @@ function tryGenerateExperienceTags(character) {
   }
 
   // 孤独(誰とも打ち解けられていない)な生き方 → 後天性性格
-  const totalAffinity = Object.values(character.affinity || {}).reduce((s, v) => s + v, 0);
+  const totalAffinity = Object.values(character.relationships || {}).reduce((s, r) => s + (r.favorability || 0), 0);
   if (character.ageYears >= 25 && totalAffinity < 10 && !character.partnerId && Math.random() < 0.02) {
     addUnique(acquired, buildCompoundPersonality('isolation'), MAX_DYNAMIC_TAGS);
   }
@@ -184,34 +184,57 @@ function evaluateJobTitle(character) {
 // AIが自由に創出・更新する演出的な二つ名であり、両者は明確に別管理とする。
 
 const QUALIFICATION_DEFS = {
-  伐採: '木材を効率よく伐採できる基礎資格',
-  採掘: '石材や鉱石を効率よく採掘できる基礎資格',
-  農耕: '作物を育て収穫できる基礎資格',
-  漁業: '川や海で魚を捕獲できる基礎資格',
-  料理: '食材を調理し、満腹度回復量の高い料理を作れる資格',
-  戦闘: '動物の討伐や危険な場面に対応できる資格',
-  交渉: '取引や交渉を得意とする資格',
-  魔術: '神秘的な力の素養を持つ資格',
-  建築: '建物を設計し組み立てる基礎資格',
+  鍛冶師: '鉄/金/石を加工できる資格',
+  鉱夫: 'つるはしを使い鉱石/石を効率よく採掘できる資格',
+  大工: '原木を木材へ加工できる資格(原木の採集自体は誰でも可能)',
+  料理人: '調理器具を使い高度な料理を作れる資格(火による基本調理は誰でも可能)',
+  漁業: '魚を捕獲し、深水域を探索できる資格。水場での移動減速が軽減される',
+  農民: 'クワを使い作物を育成・管理できる資格',
+  酪農家: 'ハサミ等を使い羊毛・卵を安全に回収できる資格',
+  狩人: '動物を効率的に狩猟・解体できる資格(動物への攻撃自体は誰でも可能)',
+  医師: '体力(HP/傷)を治療できる資格(空腹回復は不可)',
+  建築士: '壁・屋根・ドアの構造を組み合わせた建物を建設できる資格',
+  商人: '需要を察知し交易・物々交換で生計を立てられる資格',
+  兵士: '治安維持・警備・戦闘を担い、装備補正を最大限活かせる資格',
+  吟遊詩人: '噂や出来事を広め、歌で感情を癒し対価を得られる資格',
+  魔法使い: '杖を用いてランドマーク研究や天候変化などの奇跡を起こせる資格',
 };
 
-// character.actionCounts/params.job を見て、未取得の資格があれば付与する(累積・一度得たら失わない)
+// 資格によっては専用道具の所持が条件になる({資格名: 必要な道具アイテム名})
+const QUALIFICATION_TOOL_REQUIREMENTS = {
+  鉱夫: 'つるはし',
+  農民: 'クワ',
+  酪農家: 'ハサミ',
+  料理人: '調理器具',
+  魔法使い: '杖',
+};
+
+// character.actionCounts/params.job/所持道具 を見て、未取得の資格があれば付与する(累積・一度得たら失わない)
 function evaluateQualifications(character) {
   if (!character.qualifications) character.qualifications = [];
   const have = new Set(character.qualifications);
-  const grant = (q) => { if (!have.has(q)) { character.qualifications.push(q); have.add(q); } };
+  const hasTool = (q) => {
+    const tool = QUALIFICATION_TOOL_REQUIREMENTS[q];
+    return !tool || character.getItemCount(tool) > 0;
+  };
+  const grant = (q) => { if (!have.has(q) && hasTool(q)) { character.qualifications.push(q); have.add(q); } };
   const job = character.params.job;
   const counts = character.actionCounts;
 
-  if (job === '木こり' || job === 'きこり' || counts.woodcutting >= 10) grant('伐採');
-  if (job === '鉱夫' || counts.mining >= 10) grant('採掘');
-  if (job === '農民' || counts.farming >= 10) grant('農耕');
-  if (character.params.canFish || counts.fishing >= 5) grant('漁業');
-  if (counts.cooking >= 5) grant('料理');
-  if (job === '兵士' || counts.hunting >= 3) grant('戦闘');
-  if (job === '商人') grant('交渉');
-  if (job === '魔法使い') grant('魔術');
-  if (counts.building >= 1) grant('建築');
+  if (job === '鍛冶師' || counts.mining >= 15) grant('鍛冶師');
+  if (job === '鉱夫' || (hasTool('鉱夫') && counts.mining >= 3)) grant('鉱夫');
+  if (job === '木こり' || job === 'きこり' || counts.woodcutting >= 10) grant('大工');
+  if (hasTool('料理人') && counts.cooking >= 1) grant('料理人');
+  if (job === '漁師' || character.params.canFish) grant('漁業');
+  if (job === '農民' || (hasTool('農民') && counts.farming >= 1)) grant('農民');
+  if (hasTool('酪農家')) grant('酪農家');
+  if (job === '兵士' || counts.hunting >= 3) grant('狩人');
+  if (counts.healing >= 5) grant('医師');
+  if (counts.building >= 1) grant('建築士');
+  if (job === '商人') grant('商人');
+  if (job === '兵士') grant('兵士');
+  if (counts.socializing >= 10 && (character.params.cha || 0) >= 7) grant('吟遊詩人');
+  if (job === '魔法使い' && hasTool('魔法使い')) grant('魔法使い');
 }
 
 // ============ 能力・資格図鑑(アンロック方式) ============
@@ -242,3 +265,108 @@ const CODEX_ENTRIES = [
   ...Object.keys(ABILITY_CODEX_DEFS).map((id) => ({ id, category: '能力', description: ABILITY_CODEX_DEFS[id] })),
   ...Object.keys(ANIMAL_ABILITY_CODEX_DEFS).map((id) => ({ id, category: '動物特性', description: ANIMAL_ABILITY_CODEX_DEFS[id] })),
 ];
+
+// ============ 物々交換(バーター)エコシステム ============
+const ITEM_VALUE_TABLE = {
+  原木: 1, 木材: 2, 枝: 1, 伝説の枝: 50, リンゴ: 2, 小麦: 2, 野菜: 2, 牛肉: 5, 牛乳: 3, 羊毛: 4,
+  羊肉: 5, 豚肉: 4, 鶏肉: 3, 羽: 1, 卵: 2, 牙: 8, 虎皮: 12, 土: 1, 砂: 1, 石: 1, 石材: 3,
+  鉄鉱石: 6, 鉄: 10, 金鉱石: 15, 金: 25, 水: 1,
+};
+
+function estimateItemValue(itemId) {
+  if (ITEM_VALUE_TABLE[itemId] != null) return ITEM_VALUE_TABLE[itemId];
+  const dynDef = DYNAMIC_ITEM_REGISTRY[itemId];
+  if (dynDef) return 10 + (dynDef.atkBonus || 0) * 3 + (dynDef.defBonus || 0) * 3;
+  return 3;
+}
+
+// 双方の余剰在庫から、価値が釣り合う(または好感度で許容される)交換を1件試みる
+function attemptBarter(a, b) {
+  const findSurplus = (owner, excludeItem) => {
+    let best = null, bestQty = 1;
+    for (const slot of owner.inventorySlots) {
+      if (!slot || slot.item === excludeItem) continue;
+      const qty = owner.getItemCount(slot.item);
+      if (qty > bestQty && !isEquipment(slot.item)) { best = slot.item; bestQty = qty; }
+    }
+    return best;
+  };
+  const offerFromA = findSurplus(a, null);
+  const offerFromB = findSurplus(b, offerFromA);
+  if (!offerFromA || !offerFromB || offerFromA === offerFromB) return null;
+
+  const valueA = estimateItemValue(offerFromA);
+  const valueB = estimateItemValue(offerFromB);
+  const favor = (a.getFavorability(b.id) + b.getFavorability(a.id)) / 2;
+  const tolerance = 1 + Math.max(0, favor) / 100;
+  if (valueA > valueB * 2 * tolerance || valueB > valueA * 2 * tolerance) return null;
+
+  const qtyA = Math.max(1, Math.round(valueB / valueA));
+  const qtyB = Math.max(1, Math.round(valueA / valueB));
+  const movedA = a.removeFromInventory(offerFromA, Math.min(qtyA, a.getItemCount(offerFromA)));
+  const movedB = b.removeFromInventory(offerFromB, Math.min(qtyB, b.getItemCount(offerFromB)));
+  if (movedA <= 0 || movedB <= 0) {
+    if (movedA > 0) a.addToInventory(offerFromA, movedA);
+    if (movedB > 0) b.addToInventory(offerFromB, movedB);
+    return null;
+  }
+  a.addToInventory(offerFromB, movedB);
+  b.addToInventory(offerFromA, movedA);
+  a.adjustFavorability(b.id, 5);
+  b.adjustFavorability(a.id, 5);
+  a.addMemory(`${b.params.name}と物々交換した(${offerFromA}⇔${offerFromB})`, 3);
+  b.addMemory(`${a.params.name}と物々交換した(${offerFromB}⇔${offerFromA})`, 3);
+  return { itemA: offerFromA, qtyA: movedA, itemB: offerFromB, qtyB: movedB };
+}
+
+// ============ 社会組織: 村長・教団 ============
+
+// クラスタ内で村長が未任命なら、最もCHAが高い者を村長に任命する
+function assignMayorIfNeeded(clusterMembers) {
+  if (clusterMembers.some((m) => m.titleTags.includes('村長'))) return null;
+  const candidate = clusterMembers.reduce((best, m) => (!best || (m.params.cha || 0) > (best.params.cha || 0) ? m : best), null);
+  if (candidate) {
+    candidate.titleTags.push('村長');
+    candidate.addMemory('村長に選ばれた', 8);
+    clusterMembers.forEach((m) => {
+      if (m !== candidate) { m.setRelationType(candidate.id, '村長'); m.adjustFavorability(candidate.id, 5); }
+    });
+  }
+  return candidate;
+}
+
+function foundCult(character, cultName) {
+  if (character.titleTags.includes('教祖')) return false;
+  character.titleTags.push('教祖');
+  character.cultName = cultName;
+  character.addMemory(`「${cultName}」を設立した`, 9);
+  return true;
+}
+
+// 2,000種の性格データとの相性・好感度・カリスマから入信可否を判定する
+function evaluateCultInvite(inviter, invitee) {
+  if (invitee.titleTags.includes('教祖') || (invitee.relationships[inviter.id] || {}).relationType === '教祖') return false;
+  const favor = invitee.getFavorability(inviter.id);
+  const charmBonus = (inviter.params.cha || 0) * 2;
+  const susceptible = (invitee.params.personalityTags || []).some(
+    (t) => t.includes('影響されやすい') || t.includes('素直') || t.includes('信心') || t.includes('寂しがり')
+  );
+  const chance = Math.max(0.01, (favor + charmBonus + (susceptible ? 20 : 0)) / 200);
+  if (Math.random() < chance) {
+    invitee.setRelationType(inviter.id, '教祖');
+    invitee.cultName = inviter.cultName;
+    invitee.addMemory(`「${inviter.cultName}」に入信した`, 7);
+    if (!invitee.titleTags.includes('信者')) invitee.titleTags.push('信者');
+    return true;
+  }
+  return false;
+}
+
+// 教祖から信者への命令は最優先タスクとして扱う(character.pendingCultCommandに格納)
+function issueCultCommand(leader, follower, commandText) {
+  const rel = follower.relationships[leader.id];
+  if (!rel || rel.relationType !== '教祖') return false;
+  follower.pendingCultCommand = commandText;
+  follower.addMemory(`教祖から命令を受けた: ${commandText}`, 6);
+  return true;
+}
