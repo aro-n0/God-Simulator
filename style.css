@@ -514,6 +514,7 @@ button:hover {
 .famicom-modal-body {
   display: flex;
   gap: 14px;
+  flex-shrink: 0;
 }
 
 .famicom-sprite {
@@ -737,10 +738,10 @@ button:hover {
 
 .mood-bubble {
   position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 8px;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  margin-left: 12px;
   background: #ffffff;
   color: #000000;
   border: 2px solid #000000;
@@ -748,42 +749,43 @@ button:hover {
   font-size: 11px;
   line-height: 1.4;
   min-width: 90px;
-  max-width: 200px;
+  max-width: 180px;
   text-align: center;
   white-space: normal;
+  z-index: 5;
 }
 
 .mood-bubble::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  right: 100%;
+  transform: translateY(-50%);
   width: 0;
   height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 8px solid #000000;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 8px solid #000000;
 }
 
 .mood-bubble::before {
   content: '';
   position: absolute;
-  top: calc(100% - 2px);
-  left: 50%;
-  transform: translateX(-50%);
+  top: 50%;
+  right: calc(100% - 2px);
+  transform: translateY(-50%);
   width: 0;
   height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 6px solid #ffffff;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 6px solid #ffffff;
   z-index: 1;
 }
 
 @keyframes bubble-pop {
-  0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
-  60% { transform: translateX(-50%) scale(1.08); opacity: 1; }
-  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+  0% { transform: translateY(-50%) scale(0.4); opacity: 0; }
+  60% { transform: translateY(-50%) scale(1.08); opacity: 1; }
+  100% { transform: translateY(-50%) scale(1); opacity: 1; }
 }
 
 .mood-bubble.bubble-pop {
@@ -818,6 +820,52 @@ button:hover {
 .tag-acquired { background: #b0703c; color: #fff; }
 
 #char-modal .famicom-modal-box,
-#animal-modal .famicom-modal-box {
+#animal-modal .famicom-modal-box,
+#codex-modal .famicom-modal-box {
   width: 420px;
+  max-height: 88vh;
+  overflow: visible; /* 吹き出しの見切れ防止(実際のスクロールは内側の.famicom-modal-scrollで行う) */
+  display: flex;
+  flex-direction: column;
 }
+
+.famicom-modal-scroll {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.codex-section h3 {
+  font-size: 12px;
+  color: #9fe0a8;
+  margin: 10px 0 6px 0;
+}
+
+.codex-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px dashed #333;
+  font-size: 11px;
+}
+
+.codex-item.locked {
+  opacity: 0.45;
+}
+
+.codex-label {
+  color: #ffe066;
+  white-space: nowrap;
+}
+
+.codex-desc {
+  color: #ccc;
+}
+
+.tag-qualification { background: #2b6b8a; color: #fff; }
+.tag-relationship { background: #6b3c8a; color: #fff; }
+.tag-memory { background: #3c3c3c; color: #ddd; }
+
