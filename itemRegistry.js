@@ -23,6 +23,10 @@ const MATERIAL_BASE_COLORS = {
 // AIが動的に創出したアイテムの定義を保持するレジストリ({id: {category, materials, stackable, atkBonus, defBonus, color}})
 const DYNAMIC_ITEM_REGISTRY = {};
 
+// 水入り容器はレシピ経由ではなく給水時に生成されるため、あらかじめカテゴリ登録しておく
+registerDynamicItem('水入りバケツ', 'container', 0, 0, MATERIAL_BASE_COLORS['水']);
+registerDynamicItem('水入りコップ', 'container', 0, 0, MATERIAL_BASE_COLORS['水']);
+
 function clamp255(v) { return Math.max(0, Math.min(255, v)); }
 
 function shadeColor(hex, amt) {
@@ -65,9 +69,18 @@ const CRAFT_RECIPES = [
   { material: '木材', need: 6, name: '木の盾', category: 'armor', atkBonus: 0, defBonus: 3 },
   { material: '虎皮', need: 2, name: '虎皮のマント', category: 'armor', atkBonus: 0, defBonus: 6 },
   { material: '牙', need: 3, name: '牙の短剣', category: 'weapon', atkBonus: 6, defBonus: 0 },
-  { material: '金', need: 3, name: '金の水がめ', category: 'container', atkBonus: 0, defBonus: 0 },
-  { material: '水', need: 5, name: '水がめ', category: 'container', atkBonus: 0, defBonus: 0 },
+  // 資格に必須の専用道具(全てスタック不可の道具として登録)
+  { material: '鉄', need: 3, name: 'つるはし', category: 'tool', atkBonus: 1, defBonus: 0 },
+  { material: '鉄', need: 2, name: 'クワ', category: 'tool', atkBonus: 0, defBonus: 0 },
+  { material: '鉄', need: 2, name: 'ハサミ', category: 'tool', atkBonus: 0, defBonus: 0 },
+  { material: '鉄', need: 3, name: '調理器具', category: 'tool', atkBonus: 0, defBonus: 0 },
+  { material: '伝説の枝', need: 1, name: '杖', category: 'tool', atkBonus: 2, defBonus: 0 },
+  { material: '鉄', need: 2, name: 'バケツ', category: 'tool', atkBonus: 0, defBonus: 0 },
+  { material: '土', need: 3, name: 'コップ', category: 'tool', atkBonus: 0, defBonus: 0 },
 ];
+
+// 水を汲むための空の容器(所持していないと水は採取できない)
+const WATER_CONTAINERS = { バケツ: '水入りバケツ', コップ: '水入りコップ' };
 
 // カテゴリからスタック可否を自動判定(ツール/装備/容器=不可、素材/食料=可)
 function determineStackable(category) {
