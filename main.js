@@ -507,7 +507,8 @@ class Game {
     ctx.drawImage(c.sprite, 0, 0, spriteCanvas.width, spriteCanvas.height);
 
     document.getElementById('char-modal-name').textContent = c.params.name;
-    document.getElementById('char-modal-affiliation').textContent = c.affiliation || '無所属';
+    document.getElementById('char-modal-affiliation').textContent =
+      (c.affiliation || '無所属') + (c.cultName ? ` / ${c.cultName}` : '');
     document.getElementById('char-modal-job').textContent = c.params.job || 'なし';
     document.getElementById('char-modal-title').textContent = c.dynamicJob || '未確立';
     const bubble = document.getElementById('char-modal-mood-bubble');
@@ -541,6 +542,19 @@ class Game {
     fill('char-modal-dislikes', c.params.dislikes, 'tag-dislike', '苦手');
     const invEntries = c.inventorySlots.filter((s) => s && s.count > 0).map((s) => `${s.item}x${s.count}`);
     fill('char-modal-inventory', invEntries, 'tag-inventory', null);
+
+    const relEntries = Object.keys(c.relationships)
+      .map((id) => {
+        const target = this.characters.find((ch) => ch.id === id);
+        const r = c.relationships[id];
+        const name = target ? target.params.name : '???';
+        return `${name}(${r.relationType || '知人'}:${r.favorability})`;
+      })
+      .slice(-6);
+    fill('char-modal-relationships', relEntries, 'tag-relationship', null);
+
+    const memEntries = c.memories.slice().sort((a, b) => b.timestamp - a.timestamp).slice(0, 6).map((m) => m.event);
+    fill('char-modal-memories', memEntries, 'tag-memory', null);
   }
 
   // ============ 社会システム(交流・結婚・出産・盗み・村形成) ============
@@ -559,15 +573,26 @@ class Game {
 
         // 好感度上昇 + 交流演出
         const gain = 4 * ((a.params.socialMul || 1) + (b.params.socialMul || 1)) / 2;
-        a.affinity[b.id] = Math.min(100, (a.affinity[b.id] || 0) + gain);
-        b.affinity[a.id] = Math.min(100, (b.affinity[a.id] || 0) + gain);
+        a.adjustFavorability(b.id, gain);
+        b.adjustFavorability(a.id, gain);
+
+        // 応急手当(空腹回復ではなくHP治療。医師資格があれば治療量が大きい)
+        const tryHeal = (healer, patient) => {
+          if (patient.hp < 70 && !busy(healer) && !busy(patient)) {
+            const amount = healer.qualifications.includes('医師') ? 15 : 5;
+            patient.hp = Math.min(100, patient.hp + amount);
+            healer.actionCounts.healing += 1;
+          }
+        };
+        tryHeal(a, b);
+        tryHeal(b, a);
 
         if (!busy(a) && !busy(b) && Math.random() < 0.15) {
           a.state = STATES.SOCIAL; a.actionTimer = 2.5; a._setEmote(pickDialogue('greeting'));
           b.state = STATES.SOCIAL; b.actionTimer = 2.5; b._setEmote(pickDialogue('friendly'));
           a.actionCounts.socializing += 1; b.actionCounts.socializing += 1;
-          if (a.affinity[b.id] >= 80) a._lastSocialBondBonus = true;
-          if (b.affinity[a.id] >= 80) b._lastSocialBondBonus = true;
+          if (a.getFavorability(b.id) >= 80) a._lastSocialBondBonus = true;
+          if (b.getFavorability(a.id) >= 80) b._lastSocialBondBonus = true;
         }
 
         // 結婚判定
@@ -575,10 +600,12 @@ class Game {
           !a.partnerId && !b.partnerId && a.gender !== b.gender &&
           a.ageYears >= ADULT_AGE && b.ageYears >= ADULT_AGE &&
           a.languageLevel >= 2 && b.languageLevel >= 2 &&
-          a.affinity[b.id] >= 60 && b.affinity[a.id] >= 60 &&
+          a.getFavorability(b.id) >= 60 && b.getFavorability(a.id) >= 60 &&
           Math.random() < 0.05
         ) {
           a.partnerId = b.id; b.partnerId = a.id;
+          a.setRelationType(b.id, '伴侶'); b.setRelationType(a.id, '伴侶');
+          a.addMemory(`${b.params.name}と結婚した`, 9); b.addMemory(`${a.params.name}と結婚した`, 9);
           if (!a.titleTags.includes('既婚')) a.titleTags.push('既婚');
           if (!b.titleTags.includes('既婚')) b.titleTags.push('既婚');
           a.childCooldown = 10; b.childCooldown = 10;
@@ -596,17 +623,21 @@ class Game {
           child.x = a.x; child.y = a.y; child.ageYears = 0; child.lifespanYears = 40 + Math.random() * 80;
           child.affiliation = a.affiliation;
           a.childCooldown = 60; b.childCooldown = 60;
+          a.addMemory('子を授かった', 8); b.addMemory('子を授かった', 8);
         }
 
         // 犯罪(窃盗)判定
         const tryTheft = (thief, victim) => {
-          if (thief.hunger < 15 && !thief.hasFood() && thief.stamina < 35 && victim.hasFood() && (thief.affinity[victim.id] || 0) < 20) {
+          if (thief.hunger < 15 && !thief.hasFood() && thief.stamina < 35 && victim.hasFood() && thief.getFavorability(victim.id) < 20) {
             if (Math.random() < 0.15) {
               const key = victim.getBestFoodItem();
               if (key) {
                 const moved = victim.removeFromInventory(key, 1);
                 if (moved > 0) thief.addToInventory(key, 1);
-                victim.affinity[thief.id] = Math.max(0, (victim.affinity[thief.id] || 0) - 30);
+                victim.adjustFavorability(thief.id, -30);
+                victim.setRelationType(thief.id, '敵');
+                victim.addMemory(`${thief.params.name}に食料を盗まれた`, 7);
+                thief.addMemory(`${victim.params.name}から食料を盗んだ`, 6);
                 thief.state = STATES.STEAL; thief.actionTimer = 1.5; thief._setEmote('盗んでしまった…');
                 thief.actionCounts.stealing += 1;
                 victim._setEmote(pickDialogue('steal_victim'));
@@ -617,6 +648,25 @@ class Game {
         };
         tryTheft(a, b);
         tryTheft(b, a);
+
+        // 物々交換(バーター): 好感度がある程度あれば余剰在庫を交換することがある
+        if (!busy(a) && !busy(b) && a.getFavorability(b.id) > 10 && b.getFavorability(a.id) > 10 && Math.random() < 0.05) {
+          attemptBarter(a, b);
+        }
+
+        // 教団への勧誘(教祖が近くの未入信者を勧誘する)
+        if (a.titleTags.includes('教祖') && !b.titleTags.includes('教祖')) {
+          if (Math.random() < 0.03) evaluateCultInvite(a, b);
+        } else if (b.titleTags.includes('教祖') && !a.titleTags.includes('教祖')) {
+          if (Math.random() < 0.03) evaluateCultInvite(b, a);
+        }
+      }
+    }
+
+    // 高CHA・高INTな人物がまれに教団を立ち上げる
+    for (const c of alive) {
+      if (!c.titleTags.includes('教祖') && !c.titleTags.includes('信者') && (c.params.cha || 0) >= 8 && (c.params.int || 0) >= 6) {
+        if (Math.random() < 0.002) foundCult(c, `${c.params.name}教団`);
       }
     }
   }
@@ -640,6 +690,7 @@ class Game {
           const name = existing ? existing.affiliation : VILLAGE_NAME_POOL[villageIndex % VILLAGE_NAME_POOL.length];
           cluster.forEach((m) => { m.affiliation = name; });
           villageIndex++;
+          assignMayorIfNeeded(cluster);
         }
       }
     }
@@ -686,6 +737,7 @@ class Game {
 
       this.map.updateCrops(dt, weatherEffect.cropGrowthMul);
       this.map.regenerateTrees(dt, weatherEffect.treeRegenMul);
+      this.map.updateTreeRespawns(this.currentDay);
       updateAnimals(this.map, dt);
       this.map.updateFire(dt);
       if (this.weather === 'storm' && this.map.giantTreeBurning.size === 0 && !this.map.isGiantTreeFullyScorched()) {
