@@ -196,16 +196,38 @@ class GameMap {
     return null;
   }
 
-  // 大穴(世界に1つ・街1つ分/湖と同等サイズ・無限に鉱石採取可能)
+  // 大穴(世界に1つ・アビス風の非対称な超巨大クレーター・無限に鉱石採取可能)
+  // 真円を使わず、角度ごとにランダムな半径(断崖・亀裂)を割り当てて不規則な縁にする
   _placeGiantHole(rand) {
     const center = this._findLandmarkCenter(rand, null);
     if (!center) return;
     this.giantHoleCenter = center;
-    for (let y = center.y - 5; y <= center.y + 5; y++) {
-      for (let x = center.x - 5; x <= center.x + 5; x++) {
+
+    // 8方向の基準半径をランダムに決め(左右非対称)、角度間を補間して不規則な輪郭を作る
+    const dirCount = 8;
+    const dirRadii = [];
+    for (let i = 0; i < dirCount; i++) dirRadii.push(LANDMARK_RADIUS * (0.55 + rand() * 0.9));
+    const radiusAt = (angle) => {
+      const a = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const fIdx = (a / (Math.PI * 2)) * dirCount;
+      const i0 = Math.floor(fIdx) % dirCount;
+      const i1 = (i0 + 1) % dirCount;
+      const t = fIdx - Math.floor(fIdx);
+      return dirRadii[i0] * (1 - t) + dirRadii[i1] * t;
+    };
+    const jitterNoise = new ValueNoise2D((this.seed + 7777) >>> 0);
+
+    const maxR = Math.max(...dirRadii) + 2;
+    for (let y = center.y - Math.ceil(maxR); y <= center.y + Math.ceil(maxR); y++) {
+      for (let x = center.x - Math.ceil(maxR); x <= center.x + Math.ceil(maxR); x++) {
         const t = this.getTile(x, y);
         if (!t) continue;
-        if (Math.hypot(x - center.x, y - center.y) <= LANDMARK_RADIUS) t.type = TILE_TYPES.GIANT_HOLE;
+        const dx = x - center.x, dy = y - center.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        // 断崖の凹凸(小さな亀裂)を加える追加ノイズ
+        const crack = (jitterNoise.noise(x / 3, y / 3) - 0.5) * 1.6;
+        if (dist <= radiusAt(angle) + crack) t.type = TILE_TYPES.GIANT_HOLE;
       }
     }
     this.resources.push({ x: center.x, y: center.y, type: 'ore', amount: Infinity, isGiant: true });
@@ -306,7 +328,28 @@ class GameMap {
   isWalkable(x, y) {
     const t = this.getTile(Math.floor(x), Math.floor(y));
     if (!t) return false;
-    return t.type !== TILE_TYPES.SEA && t.type !== TILE_TYPES.LAKE && t.type !== TILE_TYPES.GIANT_TREE;
+    return t.type !== TILE_TYPES.GIANT_TREE;
+  }
+
+  // 水場(川・湖・海)かどうか。移動減速の判定に使う
+  isWaterTile(x, y) {
+    const t = this.getTile(Math.floor(x), Math.floor(y));
+    if (!t) return false;
+    return t.type === TILE_TYPES.SEA || t.type === TILE_TYPES.LAKE || t.type === TILE_TYPES.RIVER;
+  }
+
+  // 枯れた木/巨木を年数(ゲーム内日=年)に応じてランダム復活させる
+  // 普通木: 5〜10年、大木: 10〜15年
+  updateTreeRespawns(currentDay) {
+    for (const r of this.resources) {
+      if ((r.type !== 'tree' && r.type !== 'big_tree') || r.amount > 0) continue;
+      if (r.respawnDay == null) {
+        r.respawnDay = currentDay + (r.type === 'big_tree' ? 10 + Math.random() * 5 : 5 + Math.random() * 5);
+      } else if (currentDay >= r.respawnDay) {
+        r.amount = r.maxAmount;
+        r.respawnDay = null;
+      }
+    }
   }
 
   // 雨天時に木/巨木をゆっくり回復させる
