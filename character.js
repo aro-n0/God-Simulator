@@ -13,6 +13,7 @@ const STATES = {
   PRAY: 'PRAY',
   SOCIAL: 'SOCIAL',
   STEAL: 'STEAL',
+  CULT_TASK: 'CULT_TASK',
 };
 
 const EMOTES = {
@@ -44,6 +45,7 @@ const MOOD_PHRASES = {
   PRAY: ['どうか静まりますように…', '自然の力は恐ろしいな', '無事に過ごせますように'],
   SOCIAL: ['話せて嬉しいな', 'この人とはウマが合いそうだ', 'たまにはおしゃべりもいいね'],
   STEAL: ['ごめん…でも仕方なかったんだ', 'こんなこと、したくなかったのに', '見つかりませんように…'],
+  CULT_TASK: ['教祖様のためにやらねば', 'これも信仰のためだ', '早く終わらせよう'],
   HUNGRY: ['お腹すいたな…', '早く何か食べたいよ', '力が出ないよ…'],
   LAKE_NEARBY: ['湖が綺麗だな', '水の音が心地いいよ', 'このあたり、景色がいいな'],
 };
@@ -114,19 +116,22 @@ class Character {
     this.childCooldown = 0;
     this.titleTags = (restore && restore.titleTags) || [];
     this.prayCount = (restore && restore.prayCount) || 0;
-    this.affinity = (restore && restore.affinity) || {};
+    this.relationships = (restore && restore.relationships) || {}; // { targetId: {relationType, favorability(-100~100)} }
+    this.memories = (restore && restore.memories) || []; // { id, event, importance, timestamp }
 
     // 性格(先天性は誕生時に確定・以後不変。後天性は体験により追加/更新される)
     this.acquiredPersonality = (restore && restore.acquiredPersonality) || [];
     if (!this.params.personalityTags) this.params.personalityTags = pickInnateTraits();
     this.dynamicJob = (restore && restore.dynamicJob) || null; // AI創出の「称号」
+    this.cultName = (restore && restore.cultName) || null;
+    this.pendingCultCommand = (restore && restore.pendingCultCommand) || null;
     this.qualifications = (restore && restore.qualifications) || []; // システム上の「資格」(累積保持)
     this._jobEvalCooldown = 8;
 
     // 体験トリガー用の行動カウンタ・一時フラグ(aiEngine.jsが参照)
     this.actionCounts = (restore && restore.actionCounts) || {
       woodcutting: 0, mining: 0, farming: 0, fishing: 0, cooking: 0,
-      praying: 0, socializing: 0, hunting: 0, tigerHunts: 0, stealing: 0, nightActivity: 0, building: 0,
+      praying: 0, socializing: 0, hunting: 0, tigerHunts: 0, stealing: 0, nightActivity: 0, building: 0, healing: 0,
     };
     this.nightWaterTime = (restore && restore.nightWaterTime) || 0;
     this.stormHits = 0;
@@ -362,14 +367,22 @@ class Character {
     if (this.hp < 15) this._crisisFlag = true;
     if (this._crisisFlag && this.hp > 50) { this._crisisFlag = false; this._crisisSurvived = true; }
 
-    // --- 優先度: 睡眠(夜) > 空腹での食事 > 天候での祈り > 通常AI ---
-    if (ctx.isNight) {
-      if (this.state !== STATES.SLEEP) { this.state = STATES.SLEEP; this._setEmote('眠っている'); }
-    } else if (this.state === STATES.SLEEP) {
-      this.state = STATES.WANDER;
+    // --- 優先度: 教祖の命令(最優先) > 睡眠(夜) > 空腹での食事 > 天候での祈り > 通常AI ---
+    if (this.pendingCultCommand && this.state !== STATES.CULT_TASK) {
+      this.state = STATES.CULT_TASK;
+      this.actionTimer = 8 + Math.random() * 6;
+      this._setEmote('教祖の命令を実行中');
     }
 
-    if (this.state !== STATES.SLEEP) {
+    if (this.state !== STATES.CULT_TASK) {
+      if (ctx.isNight) {
+        if (this.state !== STATES.SLEEP) { this.state = STATES.SLEEP; this._setEmote('眠っている'); }
+      } else if (this.state === STATES.SLEEP) {
+        this.state = STATES.WANDER;
+      }
+    }
+
+    if (this.state !== STATES.SLEEP && this.state !== STATES.CULT_TASK) {
       if (this.hunger < 35 && this.hasFood() && this.state !== STATES.EAT) {
         this._startEat();
       } else if (
@@ -398,6 +411,7 @@ class Character {
       case STATES.PRAY: this._updateAction(dt, ['祈っている']); break;
       case STATES.SOCIAL: this._updateAction(dt, ['交流中']); break;
       case STATES.STEAL: this._updateAction(dt, ['こっそり…']); break;
+      case STATES.CULT_TASK: this._updateCultTask(dt); break;
     }
     this.stamina = Math.max(0, Math.min(100, this.stamina));
     this.hp = Math.max(0, Math.min(100, this.hp));
@@ -436,12 +450,22 @@ class Character {
     if (this.actionTimer <= 0) this.state = STATES.WANDER;
   }
 
+  _updateCultTask(dt) {
+    this.actionTimer -= dt;
+    if (Math.random() < 0.02) this._setEmote('教祖の命令を実行中');
+    if (this.actionTimer <= 0) {
+      this.pendingCultCommand = null;
+      this.state = STATES.WANDER;
+    }
+  }
+
   _setEmote(text) {
     this.emote = text;
     this.emoteTimer = 3;
   }
 
   _updateWander(dt, moveSpeedMul) {
+    this._tigerMemoryLogged = false;
     this.stamina -= dt * 0.6;
     if (this.stamina < this.params.restThreshold) {
       this.state = STATES.REST;
@@ -457,6 +481,14 @@ class Character {
       if (picked > 0) {
         this.map.groundItems.splice(groundIdx, 1);
         this._setEmote('何かを拾った');
+      }
+    }
+
+    // 超巨大樹は伐採できないが、近くを探索すると稀に伝説の枝が見つかる
+    if (this.map.giantTreeCenter && !this.map.isGiantTreeFullyScorched()) {
+      const gt = this.map.giantTreeCenter;
+      if (this.distTo(gt.x, gt.y) < 8 && Math.random() < 0.002) {
+        if (this.addToInventory('伝説の枝', 1) > 0) this._setEmote('伝説の枝を見つけた！');
       }
     }
 
@@ -559,6 +591,7 @@ class Character {
           target.attackTimer = 1 / (target.atkSpeed || 1);
           const dmg = Math.max(0, target.atk - this.getEffectiveDef());
           this.hp = Math.max(0, this.hp - dmg);
+          if (dmg > 0 && !this._tigerMemoryLogged) { this._tigerMemoryLogged = true; this.addMemory('虎に襲われた', 8); }
           if (this.hp <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
         }
         return;
@@ -569,6 +602,7 @@ class Character {
         this.gatherTimer = 0;
         let drop = null;
         if (target.type === 'sheep') drop = shearAnimal(target);
+        else if (target.type === 'chicken') drop = layEgg(target);
         if (!drop) drop = harvestAnimal(target);
         this.addToInventory(drop, 1);
         if (target.amount <= 0) { this.gatherTarget = null; this.state = STATES.WANDER; }
@@ -587,21 +621,27 @@ class Character {
       if (target.amount !== Infinity) target.amount -= 1;
 
       if (type === 'tree' || type === 'big_tree') {
-        this.addToInventory('原木', 1);
+        this.addToInventory('原木', type === 'big_tree' ? 4 : 2);
         this.actionCounts.woodcutting += 1;
         if (Math.random() < 0.15) this.addToInventory('枝', 1);
-        if (type === 'big_tree' && Math.random() < 0.03) this.addToInventory('伝説の枝', 1);
       } else if (type === 'stone') {
         this.addToInventory('石', 1);
         this.actionCounts.mining += 1;
         if (Math.random() < 0.2) this.addToInventory('土', 1);
       } else if (type === 'ore') {
-        const oreItem = Math.random() < 0.7 ? '鉄鉱石' : '金鉱石';
-        this.addToInventory(oreItem, 1);
+        // 大穴採掘時のみ: 鉄鉱石10%・金鉱石5%(それ以外は空振り)
+        if (target.isGiant && !this._abyssMemoryLogged) { this._abyssMemoryLogged = true; this.addMemory('大穴を調査した', 5); }
+        const roll = Math.random();
+        if (roll < 0.1) { this.addToInventory('鉄鉱石', 1); if (target.isGiant) this._bigGatherCrit = true; }
+        else if (roll < 0.15) { this.addToInventory('金鉱石', 1); if (target.isGiant) this._bigGatherCrit = true; }
         this.actionCounts.mining += 1;
-        if (target.isGiant && Math.random() < 0.1) this._bigGatherCrit = true;
       } else if (type === 'water') {
-        this.addToInventory('水', 1);
+        // 容器(バケツ/コップ)を持っていないと水は汲めない
+        const containerKey = Object.keys(WATER_CONTAINERS).find((k) => this.getItemCount(k) > 0);
+        if (containerKey) {
+          this.removeFromInventory(containerKey, 1);
+          this.addToInventory(WATER_CONTAINERS[containerKey], 1);
+        }
       } else if (type === 'sand') {
         this.addToInventory('砂', 1);
       }
@@ -646,7 +686,12 @@ class Character {
     const dy = ty - this.y;
     const d = Math.hypot(dx, dy);
     if (d < arriveRadius) return true;
-    const speed = this.params.speed * speedMul * dt;
+    // 水場に入っていると移動速度が低下する(漁師資格保持者は軽減)
+    let waterMul = 1;
+    if (this.map.isWaterTile(this.x, this.y)) {
+      waterMul = this.qualifications.includes('漁業') ? 0.8 : 0.5;
+    }
+    const speed = this.params.speed * speedMul * waterMul * dt;
     const step = Math.min(speed, d);
     const nx = this.x + (dx / d) * step;
     const ny = this.y + (dy / d) * step;
@@ -668,6 +713,34 @@ class Character {
   }
 
   // 能力タグ(ステータスから自動導出)
+  // ============ 人間関係(relationships)・エピソード記憶(memories) ============
+  getFavorability(targetId) {
+    const r = this.relationships[targetId];
+    return r ? r.favorability : 0;
+  }
+
+  adjustFavorability(targetId, delta) {
+    if (!this.relationships[targetId]) this.relationships[targetId] = { relationType: null, favorability: 0 };
+    const r = this.relationships[targetId];
+    r.favorability = Math.max(-100, Math.min(100, r.favorability + delta));
+    return r.favorability;
+  }
+
+  setRelationType(targetId, relationType) {
+    if (!this.relationships[targetId]) this.relationships[targetId] = { relationType: null, favorability: 0 };
+    this.relationships[targetId].relationType = relationType;
+  }
+
+  // 体験を短期・長期記憶として記録する(重要度が低いものから古い順に間引かれる)
+  addMemory(event, importance) {
+    this.memories.push({ id: 'mem_' + Date.now() + '_' + Math.floor(Math.random() * 10000), event, importance: importance || 1, timestamp: Date.now() });
+    const MAX_MEMORIES = 20;
+    if (this.memories.length > MAX_MEMORIES) {
+      this.memories.sort((a, b) => a.importance - b.importance || a.timestamp - b.timestamp);
+      this.memories.shift();
+    }
+  }
+
   getAbilityTags() {
     const tags = [];
     const p = this.params;
@@ -714,6 +787,7 @@ class Character {
       case STATES.PRAY: pool = MOOD_PHRASES.PRAY; break;
       case STATES.SOCIAL: pool = MOOD_PHRASES.SOCIAL; break;
       case STATES.STEAL: pool = MOOD_PHRASES.STEAL; break;
+      case STATES.CULT_TASK: pool = MOOD_PHRASES.CULT_TASK; break;
       case STATES.MOVE_TO_TARGET: pool = MOOD_PHRASES.MOVE_TO_TARGET; break;
       case STATES.REST: pool = MOOD_PHRASES.REST; break;
       case STATES.GATHER: {
@@ -750,9 +824,10 @@ class Character {
       rainExposure: this.rainExposure, hunger: this.hunger, hp: this.hp, gender: this.gender,
       ageYears: this.ageYears, lifespanYears: this.lifespanYears, languageLevel: this.languageLevel,
       languageProgress: this.languageProgress, partnerId: this.partnerId, titleTags: this.titleTags,
-      prayCount: this.prayCount, affinity: this.affinity, acquiredPersonality: this.acquiredPersonality,
+      prayCount: this.prayCount, relationships: this.relationships, memories: this.memories, acquiredPersonality: this.acquiredPersonality,
       dynamicJob: this.dynamicJob, actionCounts: this.actionCounts, nightWaterTime: this.nightWaterTime,
       qualifications: this.qualifications, baseAtk: this.baseAtk, baseDef: this.baseDef, atkSpeed: this.atkSpeed,
+      cultName: this.cultName, pendingCultCommand: this.pendingCultCommand,
     };
   }
 }
