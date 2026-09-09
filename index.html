@@ -126,11 +126,12 @@
   <div id="char-modal" class="famicom-modal">
     <div class="famicom-modal-box">
       <button id="char-modal-close" class="famicom-close">×</button>
+      <div class="famicom-modal-scroll">
       <div class="famicom-modal-body">
         <div class="famicom-sprite-wrap">
-          <div id="char-modal-mood-bubble" class="mood-bubble"></div>
           <canvas id="char-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
         </div>
+        <div id="char-modal-mood-bubble" class="mood-bubble"></div>
         <div class="famicom-info">
           <div class="famicom-name" id="char-modal-name">-</div>
           <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
@@ -142,7 +143,6 @@
           <div class="famicom-row">年齢/言語Lv: <span id="char-modal-age">-</span></div>
         </div>
       </div>
-      <div class="famicom-modal-scroll">
       <div class="famicom-tags">
         <div class="tag-group"><span class="tag-group-label">先天性性格</span><div id="char-modal-innate-tags" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">後天性性格</span><div id="char-modal-acquired-tags" class="tag-row"></div></div>
@@ -152,8 +152,12 @@
         <div class="tag-group"><span class="tag-group-label">好きなこと</span><div id="char-modal-likes" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">苦手なこと</span><div id="char-modal-dislikes" class="tag-row"></div></div>
         <div class="tag-group"><span class="tag-group-label">持ち物(最大10スロット)</span><div id="char-modal-inventory" class="tag-row"></div></div>
-        <div class="tag-group"><span class="tag-group-label">人間関係</span><div id="char-modal-relationships" class="tag-row"></div></div>
-        <div class="tag-group"><span class="tag-group-label">記憶</span><div id="char-modal-memories" class="tag-row"></div></div>
+        <div class="tag-group">
+          <span class="tag-group-label">人間関係</span>
+          <div id="char-modal-relationships" class="tag-row"></div>
+          <button id="char-modal-relationships-more" class="relationships-more-btn" style="display:none;"></button>
+          <div id="char-modal-relationships-extra" class="tag-row" style="display:none;"></div>
+        </div>
       </div>
       </div>
     </div>
@@ -163,18 +167,18 @@
   <div id="animal-modal" class="famicom-modal">
     <div class="famicom-modal-box">
       <button id="animal-modal-close" class="famicom-close">×</button>
+      <div class="famicom-modal-scroll">
       <div class="famicom-modal-body">
         <div class="famicom-sprite-wrap">
-          <div id="animal-modal-mood-bubble" class="mood-bubble"></div>
           <canvas id="animal-modal-sprite" width="96" height="96" class="famicom-sprite"></canvas>
         </div>
+        <div id="animal-modal-mood-bubble" class="mood-bubble"></div>
         <div class="famicom-info">
           <div class="famicom-name" id="animal-modal-name">-</div>
           <div class="famicom-row">状態: <span id="animal-modal-status">-</span></div>
           <div class="famicom-row" id="animal-modal-combat-row" style="display:none;">攻撃力/防御力/攻撃速度: <span id="animal-modal-combat">-</span></div>
         </div>
       </div>
-      <div class="famicom-modal-scroll">
       <div class="famicom-tags">
         <div id="animal-modal-traits" class="tag-row"></div>
       </div>
