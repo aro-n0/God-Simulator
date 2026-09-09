@@ -165,3 +165,43 @@ function buildItemIcon(itemId) {
   }
   return cnv;
 }
+
+// ============ 汎用スロット配列操作(チェスト等の共有ストレージ用) ============
+function addToSlotArray(slots, item, qty) {
+  if (!item || qty <= 0) return 0;
+  const stackLimit = getItemStackLimit(item);
+  let remaining = qty;
+  for (const slot of slots) {
+    if (remaining <= 0) break;
+    if (slot && slot.item === item && slot.count < stackLimit) {
+      const space = stackLimit - slot.count;
+      const add = Math.min(space, remaining);
+      slot.count += add;
+      remaining -= add;
+    }
+  }
+  for (let i = 0; i < slots.length && remaining > 0; i++) {
+    if (!slots[i]) {
+      const add = Math.min(stackLimit, remaining);
+      slots[i] = { item, count: add };
+      remaining -= add;
+    }
+  }
+  return qty - remaining;
+}
+
+function removeFromSlotArray(slots, item, qty) {
+  let remaining = qty;
+  for (const slot of slots) {
+    if (remaining <= 0) break;
+    if (slot && slot.item === item) {
+      const take = Math.min(slot.count, remaining);
+      slot.count -= take;
+      remaining -= take;
+    }
+  }
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i] && slots[i].count <= 0) slots[i] = null;
+  }
+  return qty - remaining;
+}
