@@ -37,14 +37,20 @@ const HAT_COLOR_CHOICES = ['#4b3b8a', '#8a2b2b', '#2b2b2b', '#3c6b8a'];
 const HAIRSTYLE_CHOICES = ['short', 'short', 'long', 'long', 'bald'];
 
 const JOB_KEYWORDS = {
-  木こり: { gatherBonus: { tree: 1.6, big_tree: 1.6 } },
-  きこり: { gatherBonus: { tree: 1.6, big_tree: 1.6 } },
+  大工: { gatherBonus: { tree: 1.6, big_tree: 1.6 } },
   魔法使い: { gatherBonus: {} },
   商人: { gatherBonus: {} },
   農民: { gatherBonus: { tree: 1.1, stone: 1.1 }, farmBonus: 1.5 },
   鉱夫: { gatherBonus: { stone: 1.6, ore: 1.6 } },
   兵士: { gatherBonus: {}, huntBonus: 1.5 },
   漁師: { gatherBonus: {}, canFish: true },
+  鍛冶師: { gatherBonus: { stone: 1.3, ore: 1.3 } },
+  料理人: { gatherBonus: {} },
+  酪農家: { gatherBonus: {} },
+  狩人: { gatherBonus: {}, huntBonus: 1.6 },
+  医師: { gatherBonus: {} },
+  建築士: { gatherBonus: { tree: 1.2, stone: 1.2 } },
+  吟遊詩人: { gatherBonus: {} },
 };
 
 const PERSONALITY_KEYWORDS = {
@@ -401,70 +407,37 @@ function buildScorchedGiantTreeIcon() {
   return cnv;
 }
 
-// 大穴(メイドインアビスの「深穴」を思わせる、左右非対称・断崖と亀裂を持つ超巨大縦穴)
-// 人工的な真円は使わず、角度ごとに異なる半径を持つ多角形を何層も重ねて不規則な縁を作る
+// 大穴の中心装飾(実際のクレーター形状はタイル側のholeDepthグラデーションで描画されるため、
+// アイコン側は地形とズレて重なり破綻しないよう、最深部のごく小さな発光と亀裂・鉱脈の点描のみに留める)
 function buildGiantHoleIcon() {
-  const size = 64;
+  const size = 20;
   const cnv = document.createElement('canvas');
   cnv.width = size; cnv.height = size;
   const ctx = cnv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
   const cx = size / 2, cy = size / 2;
 
-  // シード固定の疑似ランダム(毎回同じ非対称な形になるようにする)
   let seed = 91;
   const rand = () => { seed = (seed * 16807) % 2147483647; return (seed % 1000) / 1000; };
 
-  function jaggedPolygon(baseR, wobble, points) {
-    const pts = [];
-    for (let i = 0; i < points; i++) {
-      const angle = (i / points) * Math.PI * 2;
-      const r = baseR * (1 - wobble / 2 + rand() * wobble);
-      pts.push([cx + Math.cos(angle) * r, cy + Math.sin(angle) * r * 0.9]);
-    }
-    return pts;
-  }
+  // 最深部の淡い発光
+  _px(ctx, cx - 1, cy - 1, 3, 3, 'rgba(150,190,255,0.55)');
 
-  function fillPolygon(pts, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // 地表(緑がかった縁)から深層(青紫〜漆黒)への層。角度ごとに揺らぎが異なり左右非対称になる
-  const layers = [
-    { r: 31, w: 0.5, color: '#3c5c3a' },
-    { r: 27, w: 0.55, color: '#2c4a38' },
-    { r: 23, w: 0.6, color: '#22403c' },
-    { r: 19, w: 0.55, color: '#1a3440' },
-    { r: 15, w: 0.5, color: '#152840' },
-    { r: 11, w: 0.45, color: '#101c38' },
-    { r: 7, w: 0.4, color: '#0a1228' },
-    { r: 3.5, w: 0.3, color: '#2a3a6a' },
-  ];
-  for (const layer of layers) fillPolygon(jaggedPolygon(layer.r, layer.w, 14), layer.color);
-
-  // 最深部の淡い光
-  _px(ctx, cx - 1, cy - 1, 2, 2, 'rgba(150,190,255,0.6)');
-
-  // 断崖の亀裂(中心から放射状に伸びる不規則な線)
-  ctx.strokeStyle = '#0a0603';
+  // 断崖の亀裂(中心から放射状に伸びる不規則な短い線)
+  ctx.strokeStyle = 'rgba(10,6,3,0.7)';
   ctx.lineWidth = 1;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const angle = rand() * Math.PI * 2;
-    const len = 14 + rand() * 14;
+    const len = 5 + rand() * 5;
     ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(angle) * 6, cy + Math.sin(angle) * 6);
+    ctx.moveTo(cx + Math.cos(angle) * 2, cy + Math.sin(angle) * 2);
     ctx.lineTo(cx + Math.cos(angle) * len, cy + Math.sin(angle) * len * 0.9);
     ctx.stroke();
   }
 
-  // 縁に露出した鉱脈(きらめく鉱石の点在。非対称な縁に沿わせる)
-  const veins = [[9, 16], [52, 10], [6, 44], [54, 46], [28, 4], [33, 60], [4, 28], [58, 33]];
-  veins.forEach(([vx, vy]) => _px(ctx, vx, vy, 3, 3, '#e6c85c'));
+  // 鉱脈のきらめき(数点)
+  const veins = [[3, 5], [15, 4], [2, 14], [16, 15]];
+  veins.forEach(([vx, vy]) => _px(ctx, vx, vy, 2, 2, '#e6c85c'));
 
   return cnv;
 }
@@ -627,5 +600,20 @@ function buildCampfireIcon() {
   _px(ctx, 4, 4, 6, 4, '#c94b1a');
   _px(ctx, 5, 2, 4, 4, '#e0902c');
   _px(ctx, 6, 0, 2, 3, '#f0c23c');
+  return cnv;
+}
+
+// 消火状態(灰と濡れた薪)
+function buildCampfireExtinguishedIcon() {
+  const size = 14;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 2, 10, 10, 3, '#5c5c5c');
+  _px(ctx, 4, 7, 6, 4, '#3a3a3a');
+  _px(ctx, 5, 8, 4, 2, '#5a5a5a');
+  _px(ctx, 3, 6, 2, 4, '#2b3a2b');
+  _px(ctx, 9, 6, 2, 4, '#2b3a2b');
   return cnv;
 }
