@@ -89,7 +89,7 @@ function updateAnimals(map, dt) {
           a.x = Math.floor(Math.random() * map.width);
           a.y = Math.floor(Math.random() * map.height);
           tries++;
-        } while (!map.isWalkable(a.x, a.y) && tries < 50);
+        } while ((!map.isWalkable(a.x, a.y) || map.isWaterTile(a.x, a.y)) && tries < 50);
         a.amount = a.maxAmount;
       }
       continue;
@@ -114,7 +114,7 @@ function updateAnimals(map, dt) {
       const step = Math.min(def.speed * waterMul * dt, d);
       const nx = a.x + (dx / d) * step;
       const ny = a.y + (dy / d) * step;
-      if (map.isWalkable(nx, ny)) { a.x = nx; a.y = ny; }
+      if (map.isWalkable(nx, ny) && !map.isWaterTile(nx, ny)) { a.x = nx; a.y = ny; }
     }
   }
 }
