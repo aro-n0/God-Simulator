@@ -53,6 +53,7 @@ class GameMap {
     this.animals = []; // animals.js が生成/更新する
     this.buildings = []; // キャラクターが建設した建物(ワールド保存データ側で復元)
     this.groundItems = []; // ポイ捨てされたアイテム({x,y,item,count})
+    this.villages = {}; // { villageName: {color, mayorId, x, y, radius} } (ワールド保存データ側で復元)
     this.giantHoleCenter = null;
     this.giantTreeCenter = null;
     this.giantTreeTiles = [];
@@ -227,7 +228,12 @@ class GameMap {
         const angle = Math.atan2(dy, dx);
         // 断崖の凹凸(小さな亀裂)を加える追加ノイズ
         const crack = (jitterNoise.noise(x / 3, y / 3) - 0.5) * 1.6;
-        if (dist <= radiusAt(angle) + crack) t.type = TILE_TYPES.GIANT_HOLE;
+        const edgeR = radiusAt(angle) + crack;
+        if (dist <= edgeR) {
+          t.type = TILE_TYPES.GIANT_HOLE;
+          // 中心ほど深い(1.0)、縁ほど浅い(0.0)。タイル色のグラデーションに使う実データ
+          t.holeDepth = Math.max(0, Math.min(1, 1 - dist / Math.max(0.6, edgeR)));
+        }
       }
     }
     this.resources.push({ x: center.x, y: center.y, type: 'ore', amount: Infinity, isGiant: true });
@@ -336,6 +342,20 @@ class GameMap {
     const t = this.getTile(Math.floor(x), Math.floor(y));
     if (!t) return false;
     return t.type === TILE_TYPES.SEA || t.type === TILE_TYPES.LAKE || t.type === TILE_TYPES.RIVER;
+  }
+
+  // 浅瀬(川・湖): 一般人も進入・漁が可能
+  isShallowWaterTile(x, y) {
+    const t = this.getTile(Math.floor(x), Math.floor(y));
+    if (!t) return false;
+    return t.type === TILE_TYPES.LAKE || t.type === TILE_TYPES.RIVER;
+  }
+
+  // 深い海: 漁師資格保持者のみ進入可能
+  isDeepWaterTile(x, y) {
+    const t = this.getTile(Math.floor(x), Math.floor(y));
+    if (!t) return false;
+    return t.type === TILE_TYPES.SEA;
   }
 
   // 枯れた木/巨木を年数(ゲーム内日=年)に応じてランダム復活させる
