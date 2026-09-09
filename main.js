@@ -6,19 +6,26 @@ let game;
 
 const WEATHER_EFFECTS = {
   clear: { moveSpeedMul: 1, fatigueMul: 1, cropGrowthMul: 1, treeRegenMul: 0, label: '☀ 晴れ' },
+  cloudy: { moveSpeedMul: 1, fatigueMul: 1, cropGrowthMul: 1.1, treeRegenMul: 0.1, label: '☁ 曇り' },
   rain: { moveSpeedMul: 0.85, fatigueMul: 1.2, cropGrowthMul: 1.5, treeRegenMul: 0.3, label: '🌧 雨' },
   blessed_rain: { moveSpeedMul: 0.9, fatigueMul: 1.1, cropGrowthMul: 2.2, treeRegenMul: 0.8, label: '🌦 恵みの雨' },
   wind: { moveSpeedMul: 0.8, fatigueMul: 1.15, cropGrowthMul: 1, treeRegenMul: 0, label: '🌬 強風' },
   storm: { moveSpeedMul: 0.7, fatigueMul: 1.3, cropGrowthMul: 1.3, treeRegenMul: 0.4, label: '⛈ 雷雨' },
 };
-const WEATHER_ORDER = ['clear', 'rain', 'blessed_rain', 'wind', 'storm'];
-const WEATHER_WEIGHTS = [0.45, 0.22, 0.1, 0.13, 0.1];
+// 基本は晴れ/曇り。雨・雷雨・強風は滅多に発生しないレア天候とする
+const WEATHER_ORDER = ['clear', 'cloudy', 'rain', 'blessed_rain', 'wind', 'storm'];
+const WEATHER_WEIGHTS = [0.62, 0.28, 0.04, 0.02, 0.03, 0.01];
+const RAIN_WEATHERS = ['rain', 'blessed_rain', 'storm'];
 
 const DAY_LENGTH_SEC = 24 * 60; // 1日=24分(現実時間, x1速度時)
 const NIGHT_START_SEC = 16 * 60; // 昼16分/夜8分
 // ADULT_AGE は character.js で定義済みのものをそのまま利用する(重複宣言を避ける)
 const MAX_POPULATION = 90;
-const VILLAGE_NAME_POOL = ['あさひ村', 'みどり村', 'かぜの村', 'いずみ村', 'たいよう村', 'つき村'];
+const VILLAGE_NAME_POOL = [
+  'あさひ村', 'みどり村', 'かぜの村', 'いずみ村', 'たいよう村', 'つき村', 'ひかり村', 'くろがね村',
+  'みずほ村', 'あおば村', 'さくら村', 'ゆき村', 'ほし村', 'もり村', 'かわ村', 'やま村', 'うみ村',
+  'ふじ村', 'こだま村', 'せせらぎ村', 'たそがれ村', 'あかね村', 'しらゆき村', 'こはく村',
+];
 
 function breedChild(parentA, parentB) {
   const rand = Math.random;
@@ -113,6 +120,7 @@ class Game {
       }
       if (config.buildings) this.map.buildings = config.buildings;
       if (config.groundItems) this.map.groundItems = config.groundItems;
+      if (config.villages) this.map.villages = config.villages;
       if (config.dynamicItemRegistry) Object.assign(DYNAMIC_ITEM_REGISTRY, config.dynamicItemRegistry);
     }
 
@@ -153,13 +161,16 @@ class Game {
     this.buildingIconCache = {};
     this.itemIconCache = {};
     this.icons.campfire = buildCampfireIcon();
+    this.icons.campfire_extinguished = buildCampfireExtinguishedIcon();
   }
 
   _getBuildingIcon(building) {
+    if (building.category === 'campfire') {
+      return building.lit ? this.icons.campfire : this.icons.campfire_extinguished;
+    }
     const key = building.type;
     if (!this.buildingIconCache[key]) {
       if (building.category === 'large_house') this.buildingIconCache[key] = buildLargeHouseIcon(building.theme);
-      else if (building.category === 'campfire') this.buildingIconCache[key] = buildCampfireIcon();
       else this.buildingIconCache[key] = buildHouseIcon(building.theme);
     }
     return this.buildingIconCache[key];
@@ -184,6 +195,7 @@ class Game {
       discoveredAnimalTypes: Array.from(this.discoveredAnimalTypes),
       buildings: this.map.buildings,
       groundItems: this.map.groundItems,
+      villages: this.map.villages,
       dynamicItemRegistry: DYNAMIC_ITEM_REGISTRY,
     });
   }
@@ -543,18 +555,54 @@ class Game {
     const invEntries = c.inventorySlots.filter((s) => s && s.count > 0).map((s) => `${s.item}x${s.count}`);
     fill('char-modal-inventory', invEntries, 'tag-inventory', null);
 
-    const relEntries = Object.keys(c.relationships)
-      .map((id) => {
-        const target = this.characters.find((ch) => ch.id === id);
-        const r = c.relationships[id];
-        const name = target ? target.params.name : '???';
-        return `${name}(${r.relationType || '知人'}:${r.favorability})`;
-      })
-      .slice(-6);
-    fill('char-modal-relationships', relEntries, 'tag-relationship', null);
+    this._renderRelationships(c);
+  }
 
-    const memEntries = c.memories.slice().sort((a, b) => b.timestamp - a.timestamp).slice(0, 6).map((m) => m.event);
-    fill('char-modal-memories', memEntries, 'tag-memory', null);
+  // 人間関係: 特別な関係(村長/教祖/伴侶/敵)と好感度の上位・下位を優先表示し、残りは折りたたむ
+  _renderRelationships(c) {
+    const SPECIAL_TYPES = ['村長', '教祖', '伴侶', '敵'];
+    const entries = Object.keys(c.relationships).map((id) => {
+      const target = this.characters.find((ch) => ch.id === id);
+      const r = c.relationships[id];
+      return { id, name: target ? target.params.name : '???', relationType: r.relationType, favorability: r.favorability };
+    });
+
+    const special = entries.filter((e) => SPECIAL_TYPES.includes(e.relationType));
+    const rest = entries.filter((e) => !SPECIAL_TYPES.includes(e.relationType)).sort((a, b) => b.favorability - a.favorability);
+    const topN = rest.slice(0, 3);
+    const bottomN = rest.slice(-2).filter((e) => !topN.includes(e));
+    const primaryIds = new Set([...special, ...topN, ...bottomN].map((e) => e.id));
+    const primary = entries.filter((e) => primaryIds.has(e.id)).slice(0, 5);
+    const extra = entries.filter((e) => !primaryIds.has(e.id));
+
+    const label = (e) => `${e.name}(${e.relationType || '知人'}:${e.favorability})`;
+    const fillRow = (id, arr) => {
+      const el = document.getElementById(id);
+      el.innerHTML = '';
+      arr.forEach((e) => {
+        const tag = document.createElement('span');
+        tag.className = 'tag tag-relationship';
+        tag.textContent = `[${label(e)}]`;
+        el.appendChild(tag);
+      });
+    };
+    fillRow('char-modal-relationships', primary);
+
+    const moreBtn = document.getElementById('char-modal-relationships-more');
+    const extraEl = document.getElementById('char-modal-relationships-extra');
+    if (extra.length > 0) {
+      moreBtn.style.display = '';
+      moreBtn.textContent = `その他の関係を見る (+${extra.length}名)`;
+      moreBtn.onclick = () => {
+        const showing = extraEl.style.display !== 'none';
+        extraEl.style.display = showing ? 'none' : '';
+        moreBtn.textContent = showing ? `その他の関係を見る (+${extra.length}名)` : '閉じる';
+      };
+      fillRow('char-modal-relationships-extra', extra);
+    } else {
+      moreBtn.style.display = 'none';
+      extraEl.style.display = 'none';
+    }
   }
 
   // ============ 社会システム(交流・結婚・出産・盗み・村形成) ============
@@ -674,7 +722,14 @@ class Game {
   _updateVillages() {
     const alive = this.characters.filter((c) => !c.isRemoteMirror && !c.isDead);
     const visited = new Set();
-    let villageIndex = 0;
+    const usedNames = new Set(alive.map((m) => m.affiliation).filter((n) => n && n !== '無所属'));
+    const pickVillageName = () => {
+      const candidates = VILLAGE_NAME_POOL.filter((n) => !usedNames.has(n));
+      const name = (candidates.length ? candidates : VILLAGE_NAME_POOL)[Math.floor(Math.random() * (candidates.length ? candidates.length : VILLAGE_NAME_POOL.length))];
+      usedNames.add(name);
+      return name;
+    };
+
     for (const c of alive) {
       if (visited.has(c.id)) continue;
       const cluster = [c];
@@ -687,13 +742,25 @@ class Game {
         const avgLang = cluster.reduce((s, m) => s + m.languageLevel, 0) / cluster.length;
         if (avgLang >= 3) {
           const existing = cluster.find((m) => m.affiliation !== '無所属');
-          const name = existing ? existing.affiliation : VILLAGE_NAME_POOL[villageIndex % VILLAGE_NAME_POOL.length];
+          const name = existing ? existing.affiliation : pickVillageName();
           cluster.forEach((m) => { m.affiliation = name; });
-          villageIndex++;
-          assignMayorIfNeeded(cluster);
+          assignOrUpdateMayor(cluster, alive, name, this.map);
+
+          // 領土可視化用に村の中心・半径を更新(WorldBox風の透過カラーオーバーレイに使う)
+          if (!this.map.villages) this.map.villages = {};
+          if (!this.map.villages[name]) this.map.villages[name] = { color: this._randomVillageColor() };
+          const cx = cluster.reduce((s, m) => s + m.x, 0) / cluster.length;
+          const cy = cluster.reduce((s, m) => s + m.y, 0) / cluster.length;
+          const radius = Math.max(6, ...cluster.map((m) => Math.hypot(m.x - cx, m.y - cy))) + 3;
+          Object.assign(this.map.villages[name], { x: cx, y: cy, radius });
         }
       }
     }
+  }
+
+  _randomVillageColor() {
+    const hue = Math.floor(Math.random() * 360);
+    return `hsl(${hue}, 65%, 55%)`;
   }
 
   // ============ メインループ ============
@@ -716,6 +783,11 @@ class Game {
     if (this._weatherTimer <= 0) {
       this.weather = this._pickWeather();
       this._weatherTimer = this.weather === 'storm' ? 12 + Math.random() * 10 : 25 + Math.random() * 25;
+      if (RAIN_WEATHERS.includes(this.weather)) {
+        // 雨/雷雨が降ると焚き火は強制消火し、延焼中の超巨大樹の火も中断される
+        this.map.buildings.forEach((b) => { if (b.category === 'campfire') b.lit = false; });
+        this.map.giantTreeBurning.clear();
+      }
     }
     const weatherEffect = WEATHER_EFFECTS[this.weather];
 
@@ -740,9 +812,6 @@ class Game {
       this.map.updateTreeRespawns(this.currentDay);
       updateAnimals(this.map, dt);
       this.map.updateFire(dt);
-      if (this.weather === 'storm' && this.map.giantTreeBurning.size === 0 && !this.map.isGiantTreeFullyScorched()) {
-        if (Math.random() < dt * 0.01) this.map.igniteGiantTree();
-      }
 
       this._socialTimer -= dt;
       if (this._socialTimer <= 0) { this._socialTimer = 3; this._updateSocialSystems(); }
@@ -807,6 +876,24 @@ class Game {
         const screen = this.camera.worldToScreen(x * TILE_SIZE, y * TILE_SIZE);
         ctx.fillStyle = this._tileColor(tile);
         ctx.fillRect(Math.round(screen.x), Math.round(screen.y), Math.ceil(ts) + 1, Math.ceil(ts) + 1);
+      }
+    }
+
+    // 村の領土(WorldBox風の透過カラーオーバーレイ。20%透過で一目で領域が判別できるようにする)
+    const villageNames = Object.keys(this.map.villages || {});
+    if (villageNames.length > 0) {
+      for (const name of villageNames) {
+        const v = this.map.villages[name];
+        if (v.x == null || v.radius == null) continue;
+        if (v.x + v.radius < x0 || v.x - v.radius > x1 || v.y + v.radius < y0 || v.y - v.radius > y1) continue;
+        ctx.fillStyle = v.color.replace('hsl', 'hsla').replace(')', ', 0.2)');
+        for (let y = Math.max(y0, Math.floor(v.y - v.radius)); y < Math.min(y1, Math.ceil(v.y + v.radius)); y++) {
+          for (let x = Math.max(x0, Math.floor(v.x - v.radius)); x < Math.min(x1, Math.ceil(v.x + v.radius)); x++) {
+            if (Math.hypot(x - v.x, y - v.y) > v.radius) continue;
+            const screen = this.camera.worldToScreen(x * TILE_SIZE, y * TILE_SIZE);
+            ctx.fillRect(Math.round(screen.x), Math.round(screen.y), Math.ceil(ts) + 1, Math.ceil(ts) + 1);
+          }
+        }
       }
     }
 
@@ -888,7 +975,7 @@ class Game {
       const gh = this.map.giantHoleCenter;
       if (gh.x + 8 >= x0 && gh.x - 8 <= x1 && gh.y + 8 >= y0 && gh.y - 8 <= y1) {
         const screen = this.camera.worldToScreen(gh.x * TILE_SIZE + TILE_SIZE / 2, gh.y * TILE_SIZE + TILE_SIZE / 2);
-        const size = ts * 9.5;
+        const size = ts * 1.6;
         ctx.drawImage(this.icons.giant_hole, screen.x - size / 2, screen.y - size / 2, size, size);
       }
     }
@@ -969,10 +1056,32 @@ class Game {
       case TILE_TYPES.BIG_FOREST: return TILE_COLORS.big_forest;
       case TILE_TYPES.ROCKY: return TILE_COLORS.rocky;
       case TILE_TYPES.MOUNTAIN: return tile.n > 0.88 ? TILE_COLORS.mountainDark : TILE_COLORS.mountain;
-      case TILE_TYPES.GIANT_HOLE: return TILE_COLORS.giant_hole;
+      case TILE_TYPES.GIANT_HOLE: return this._giantHoleColor(tile.holeDepth || 0);
       case TILE_TYPES.GIANT_TREE: return TILE_COLORS.giant_tree;
       case TILE_TYPES.SCORCHED_GIANT_TREE: return TILE_COLORS.scorched_giant_tree;
       default: return '#000000';
     }
+  }
+
+  // アビス風大穴のグラデーション: 実際のタイル形状(非対称・不規則な縁)そのものを深さで彩色するため、
+  // 描画アイコンと地形の輪郭が食い違う(ズレ・重なり破綻)ことが起きない
+  _giantHoleColor(depth) {
+    const stops = [
+      [0.0, [58, 46, 34]],   // 縁: ダークブラウンの断崖
+      [0.35, [42, 34, 30]],  // 苔むした岩肌
+      [0.6, [26, 24, 32]],   // 薄暗い中層
+      [0.85, [14, 14, 26]],  // 深層の青黒
+      [1.0, [42, 58, 106]],  // 最深部のかすかな発光
+    ];
+    let lo = stops[0], hi = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (depth >= stops[i][0] && depth <= stops[i + 1][0]) { lo = stops[i]; hi = stops[i + 1]; break; }
+    }
+    const span = hi[0] - lo[0] || 1;
+    const t = (depth - lo[0]) / span;
+    const r = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t);
+    const g = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t);
+    const b = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t);
+    return `rgb(${r},${g},${b})`;
   }
 }
