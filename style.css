@@ -513,8 +513,8 @@ button:hover {
 
 .famicom-modal-body {
   display: flex;
-  gap: 14px;
-  flex-shrink: 0;
+  gap: 10px;
+  align-items: center;
 }
 
 .famicom-sprite {
@@ -730,36 +730,32 @@ button:hover {
 .tag-title { background: #8a4fae; color: #fff; }
 .tag-inventory { background: #444; color: #fff; }
 
-/* キャラ/動物モーダル: ドット絵プレビューから吹き出しで「今の気持ち」を表現 */
+/* キャラ/動物モーダル: ドット絵プレビューの右側に吹き出しで「今の気持ち」を表現。
+   通常のflexアイテムとして専用の幅を確保するため、ステータス欄と重ならない */
 .famicom-sprite-wrap {
-  position: relative;
   flex-shrink: 0;
 }
 
 .mood-bubble {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  transform: translateY(-50%);
-  margin-left: 12px;
+  position: relative;
+  flex: 0 0 130px;
+  align-self: center;
   background: #ffffff;
   color: #000000;
   border: 2px solid #000000;
   padding: 5px 9px;
   font-size: 11px;
   line-height: 1.4;
-  min-width: 90px;
-  max-width: 180px;
+  min-height: 14px;
   text-align: center;
   white-space: normal;
-  z-index: 5;
 }
 
 .mood-bubble::after {
   content: '';
   position: absolute;
   top: 50%;
-  right: 100%;
+  left: -8px;
   transform: translateY(-50%);
   width: 0;
   height: 0;
@@ -772,7 +768,7 @@ button:hover {
   content: '';
   position: absolute;
   top: 50%;
-  right: calc(100% - 2px);
+  left: -6px;
   transform: translateY(-50%);
   width: 0;
   height: 0;
@@ -783,9 +779,9 @@ button:hover {
 }
 
 @keyframes bubble-pop {
-  0% { transform: translateY(-50%) scale(0.4); opacity: 0; }
-  60% { transform: translateY(-50%) scale(1.08); opacity: 1; }
-  100% { transform: translateY(-50%) scale(1); opacity: 1; }
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .mood-bubble.bubble-pop {
@@ -822,9 +818,9 @@ button:hover {
 #char-modal .famicom-modal-box,
 #animal-modal .famicom-modal-box,
 #codex-modal .famicom-modal-box {
-  width: 420px;
+  width: 480px;
   max-height: 88vh;
-  overflow: visible; /* 吹き出しの見切れ防止(実際のスクロールは内側の.famicom-modal-scrollで行う) */
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -868,4 +864,13 @@ button:hover {
 .tag-qualification { background: #2b6b8a; color: #fff; }
 .tag-relationship { background: #6b3c8a; color: #fff; }
 .tag-memory { background: #3c3c3c; color: #ddd; }
+
+.relationships-more-btn {
+  display: block;
+  margin-top: 4px;
+  background: #2a3a48;
+  color: #9fe0a8;
+  font-size: 10px;
+  padding: 4px 8px;
+}
 
