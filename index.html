@@ -97,11 +97,6 @@
             <label class="small">帽子の色 <input id="override-hat-color" type="color" /></label>
           </div>
 
-          <p class="hint">
-            職業キーワード: 木こり/魔法使い/商人/農民/鉱夫/兵士/漁師<br />
-            性格キーワード: 頑固/元気/のんびり/ドジ/真面目/怠け/優しい/慎重
-          </p>
-
           <button id="btn-spawn" class="spawn-btn">この住民をマップに配置</button>
           <button id="btn-save-library" class="library-save-btn">ライブラリに保存</button>
         </div>
@@ -192,6 +187,26 @@
       <button id="codex-modal-close" class="famicom-close">×</button>
       <h2 class="famicom-title">能力・資格一覧</h2>
       <div id="codex-list" class="famicom-modal-scroll codex-scroll"></div>
+    </div>
+  </div>
+
+  <!-- 建築物タップ時の情報表示 -->
+  <div id="building-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="building-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title" id="building-modal-name">-</h2>
+      <div class="famicom-row" id="building-modal-occupants-row">滞在人数: <span id="building-modal-occupants">-</span></div>
+      <div class="famicom-row">所有者: <span id="building-modal-owner">-</span></div>
+      <div class="famicom-row"><span id="building-modal-built">-</span></div>
+    </div>
+  </div>
+
+  <!-- チェスト(60スロット収納) -->
+  <div id="chest-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="chest-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title">チェスト(60スロット)</h2>
+      <div id="chest-grid" class="chest-grid famicom-modal-scroll"></div>
     </div>
   </div>
 
