@@ -80,6 +80,7 @@ function tryConstructBuilding(character, map) {
     y: character.y,
     ownerId: character.id,
     ownerName: character.params.name,
+    lit: def.category === 'campfire' ? true : undefined,
   });
   return planId;
 }
