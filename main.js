@@ -168,6 +168,10 @@ class Game {
     if (building.category === 'campfire') {
       return building.lit ? this.icons.campfire : this.icons.campfire_extinguished;
     }
+    if (building.category === 'chest') {
+      if (!this.icons.chest) this.icons.chest = buildChestIcon();
+      return this.icons.chest;
+    }
     const key = building.type;
     if (!this.buildingIconCache[key]) {
       if (building.category === 'large_house') this.buildingIconCache[key] = buildLargeHouseIcon(building.theme);
@@ -361,7 +365,9 @@ class Game {
     document.getElementById('roster-modal-close').addEventListener('click', () => this._closeModal('roster-modal'));
     document.getElementById('animal-modal-close').addEventListener('click', () => this._closeModal('animal-modal'));
     document.getElementById('codex-modal-close').addEventListener('click', () => this._closeModal('codex-modal'));
-    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal', 'codex-modal'].forEach((id) => {
+    document.getElementById('building-modal-close').addEventListener('click', () => this._closeModal('building-modal'));
+    document.getElementById('chest-modal-close').addEventListener('click', () => this._closeModal('chest-modal'));
+    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal', 'codex-modal', 'building-modal', 'chest-modal'].forEach((id) => {
       const modal = document.getElementById(id);
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
     });
@@ -376,10 +382,64 @@ class Game {
     });
   }
 
+  // 建物タップ時の情報表示(名前/滞在人数/所有者/建設者と経過日数)。焚き火等の設備は滞在人数を非表示にする
+  _openBuildingModal(building) {
+    document.getElementById('building-modal-name').textContent = building.label || '建築物';
+    const occupants = this.characters.filter((c) => Math.hypot(c.x - building.x, c.y - building.y) < 2).length;
+    const occRow = document.getElementById('building-modal-occupants-row');
+    if (building.category === 'house' || building.category === 'large_house') {
+      occRow.style.display = '';
+      document.getElementById('building-modal-occupants').textContent = `${occupants}人`;
+    } else {
+      occRow.style.display = 'none';
+    }
+    document.getElementById('building-modal-owner').textContent = building.ownerName || '不明';
+    const daysAgo = Math.max(0, Math.floor(this.currentDay - (building.constructedAtDay || 0)));
+    document.getElementById('building-modal-built').textContent = `${building.ownerName || '誰か'}が${daysAgo}日前に建設`;
+    document.getElementById('building-modal').classList.add('open');
+  }
+
+  // チェスト(60スロット): 内容表示。スロットをクリックすると中身を捨てられる
+  _openChestModal(building) {
+    this._modalChest = building;
+    this._renderChest();
+    document.getElementById('chest-modal').classList.add('open');
+  }
+
+  _renderChest() {
+    const chest = this._modalChest;
+    if (!chest) return;
+    const grid = document.getElementById('chest-grid');
+    grid.innerHTML = '';
+    chest.chestSlots.forEach((slot, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'chest-slot' + (slot ? '' : ' empty');
+      if (slot) {
+        const icon = this._getItemIcon(slot.item);
+        const img = document.createElement('canvas');
+        img.width = 16; img.height = 16;
+        img.className = 'chest-slot-icon';
+        img.getContext('2d').drawImage(icon, 0, 0, 16, 16);
+        cell.appendChild(img);
+        const countEl = document.createElement('span');
+        countEl.className = 'chest-slot-count';
+        countEl.textContent = slot.count;
+        cell.appendChild(countEl);
+        cell.title = `${slot.item} x${slot.count}(クリックで捨てる)`;
+        cell.addEventListener('click', () => {
+          chest.chestSlots[i] = null;
+          this._renderChest();
+        });
+      }
+      grid.appendChild(cell);
+    });
+  }
+
   _closeModal(id) {
     document.getElementById(id).classList.remove('open');
     if (id === 'char-modal') this._modalChar = null;
     if (id === 'animal-modal') this._modalAnimal = null;
+    if (id === 'chest-modal') this._modalChest = null;
   }
 
   _updateCodexUnlocks() {
@@ -449,12 +509,26 @@ class Game {
       const d = Math.hypot(a.x - tileX, a.y - tileY);
       if (d < 0.7 && d < closestAnimalDist) { closestAnimal = a; closestAnimalDist = d; }
     }
-
-    if (closestChar && (!closestAnimal || closestCharDist <= closestAnimalDist)) {
-      this._openCharacterModal(closestChar);
-    } else if (closestAnimal) {
-      this._openAnimalModal(closestAnimal);
+    let closestBuilding = null, closestBuildingDist = Infinity;
+    for (const b of this.map.buildings) {
+      const d = Math.hypot(b.x - tileX, b.y - tileY);
+      const radius = b.category === 'large_house' ? 3 : 1.3;
+      if (d < radius && d < closestBuildingDist) { closestBuilding = b; closestBuildingDist = d; }
     }
+
+    const candidates = [
+      { obj: closestChar, dist: closestCharDist, open: () => this._openCharacterModal(closestChar) },
+      { obj: closestAnimal, dist: closestAnimalDist, open: () => this._openAnimalModal(closestAnimal) },
+      { obj: closestBuilding, dist: closestBuildingDist, open: () => this._openBuildingTap(closestBuilding) },
+    ].filter((c) => c.obj);
+    if (candidates.length === 0) return;
+    candidates.sort((a, b) => a.dist - b.dist);
+    candidates[0].open();
+  }
+
+  _openBuildingTap(building) {
+    if (building.category === 'chest') this._openChestModal(building);
+    else this._openBuildingModal(building);
   }
 
   _retriggerBubble(el) {
@@ -603,6 +677,70 @@ class Game {
       moreBtn.style.display = 'none';
       extraEl.style.display = 'none';
     }
+  }
+
+  // 虎: 空腹ゲージが30以下になると、虎以外の全ての動物(人間含む)を無差別に襲撃・捕食する
+  _updateTigerPredation(dt) {
+    for (const tiger of this.map.animals) {
+      if (tiger.type !== 'tiger' || tiger.amount <= 0) continue;
+      if (tiger.hunger > 30) { tiger.huntTarget = null; continue; }
+
+      let target = tiger.huntTarget;
+      const targetGone = !target || target.isDead || (target.amount !== undefined && target.amount <= 0);
+      if (targetGone || this._preyDist(tiger, target) > 20) {
+        target = this._findNearestPrey(tiger);
+        tiger.huntTarget = target;
+      }
+      if (!target) continue;
+
+      const dist = this._preyDist(tiger, target);
+      if (dist > 0.9) {
+        const dx = target.x - tiger.x, dy = target.y - tiger.y;
+        const step = Math.min(1.1 * dt, dist);
+        const nx = tiger.x + (dx / dist) * step, ny = tiger.y + (dy / dist) * step;
+        if (this.map.isWalkable(nx, ny) && !this.map.isWaterTile(nx, ny)) { tiger.x = nx; tiger.y = ny; }
+      } else {
+        tiger.attackTimer -= dt;
+        if (tiger.attackTimer <= 0) {
+          tiger.attackTimer = 1 / (tiger.atkSpeed || 1);
+          const targetDef = typeof target.getEffectiveDef === 'function' ? target.getEffectiveDef() : (target.def || 0);
+          const dmg = Math.max(0, tiger.atk - targetDef);
+          if (typeof target.getEffectiveDef === 'function') {
+            // 人間の獲物
+            target.hp = Math.max(0, target.hp - dmg);
+            if (typeof target.addMemory === 'function') target.addMemory('虎に襲われた', 8);
+            if (target.hp <= 0) { tiger.hunger = Math.min(100, tiger.hunger + 70); tiger.huntTarget = null; }
+          } else {
+            // 動物の獲物
+            target.amount = Math.max(0, target.amount - Math.max(1, dmg));
+            if (target.amount <= 0) {
+              tiger.hunger = Math.min(100, tiger.hunger + 70);
+              target.respawnTimer = (ANIMAL_DEFS[target.type] || {}).respawnTime || 30;
+              tiger.huntTarget = null;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  _findNearestPrey(tiger) {
+    let best = null, bestDist = 20;
+    for (const c of this.characters) {
+      if (c.isDead || c.isRemoteMirror) continue;
+      const d = Math.hypot(c.x - tiger.x, c.y - tiger.y);
+      if (d < bestDist) { best = c; bestDist = d; }
+    }
+    for (const a of this.map.animals) {
+      if (a === tiger || a.type === 'tiger' || a.amount <= 0) continue;
+      const d = Math.hypot(a.x - tiger.x, a.y - tiger.y);
+      if (d < bestDist) { best = a; bestDist = d; }
+    }
+    return best;
+  }
+
+  _preyDist(tiger, target) {
+    return Math.hypot(target.x - tiger.x, target.y - tiger.y);
   }
 
   // ============ 社会システム(交流・結婚・出産・盗み・村形成) ============
@@ -801,6 +939,7 @@ class Game {
     const ctx = {
       isNight: this.isNight, weather: this.weather, ageDeltaYears,
       moveSpeedMul: weatherEffect.moveSpeedMul, fatigueMul: weatherEffect.fatigueMul,
+      currentDay: this.currentDay,
     };
 
     if (!this.isObserverMode) {
@@ -811,6 +950,7 @@ class Game {
       this.map.regenerateTrees(dt, weatherEffect.treeRegenMul);
       this.map.updateTreeRespawns(this.currentDay);
       updateAnimals(this.map, dt);
+      this._updateTigerPredation(dt);
       this.map.updateFire(dt);
 
       this._socialTimer -= dt;
@@ -827,6 +967,9 @@ class Game {
     }
     if (this._modalAnimal) {
       if (this._modalRefreshCounter % 30 === 0) this._refreshAnimalModal();
+    }
+    if (this._modalChest) {
+      if (this._modalRefreshCounter % 30 === 0) this._renderChest();
     }
     if (document.getElementById('roster-modal').classList.contains('open')) {
       this._modalRefreshCounter++;
@@ -934,7 +1077,7 @@ class Game {
       if (b.x < x0 - 4 || b.x > x1 + 4 || b.y < y0 - 4 || b.y > y1 + 4) continue;
       const icon = this._getBuildingIcon(b);
       const screen = this.camera.worldToScreen(b.x * TILE_SIZE, b.y * TILE_SIZE);
-      const sizeMul = b.category === 'large_house' ? 4 : b.category === 'campfire' ? 1 : 2;
+      const sizeMul = b.category === 'large_house' ? 4 : b.category === 'campfire' || b.category === 'chest' ? 1 : 2;
       const iconSize = ts * sizeMul;
       ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize * 0.7, iconSize, iconSize);
     }
