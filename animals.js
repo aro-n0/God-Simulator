@@ -53,8 +53,12 @@ function makeAnimal(type, x, y) {
     eggTimer: 0,
     wanderTarget: null,
     wanderTimer: 0,
+    hunger: type === 'tiger' ? 100 : undefined, // 虎のみ空腹ゲージを持つ(3ゲーム日で100→0)
+    huntTarget: null,
   };
 }
+
+const ANIMAL_HUNGER_RATE = 100 / (3 * 24 * 60); // 人間と同じ基準速度(3ゲーム日で100→0)
 
 function getAnimalDisplayName(type) {
   return ANIMAL_NAME_JP[type] || type;
@@ -80,6 +84,7 @@ function updateAnimals(map, dt) {
     a.attackTimer = Math.max(0, a.attackTimer - dt);
     a.shearTimer = Math.max(0, a.shearTimer - dt);
     a.eggTimer = Math.max(0, a.eggTimer - dt);
+    if (a.type === 'tiger') a.hunger = Math.max(0, (a.hunger == null ? 100 : a.hunger) - dt * ANIMAL_HUNGER_RATE);
 
     if (a.amount <= 0) {
       a.respawnTimer -= dt;
@@ -96,6 +101,7 @@ function updateAnimals(map, dt) {
     }
 
     const def = ANIMAL_DEFS[a.type];
+    if (a.huntTarget) continue; // 空腹の虎が捕食対象を追跡中は main.js側の専用ロジックに移動を委ねる
     a.wanderTimer -= dt;
     if (!a.wanderTarget || a.wanderTimer <= 0) {
       const angle = Math.random() * Math.PI * 2;
