@@ -62,6 +62,7 @@ const RAW_TO_PROCESSED = { 原木: '木材', 石: '石材', 鉄鉱石: '鉄', �
 
 const AGE_YEARS_PER_DAY = 1; // 1ゲーム内日 = 1年
 const ADULT_AGE = 16;
+const BASE_HUNGER_RATE = 100 / (3 * 24 * 60); // 何も食べずに3ゲーム日で100→0になる基準速度
 const CROP_TO_ITEM = { wheat: '小麦', apple: 'リンゴ', vegetable: '野菜' };
 const INVENTORY_SLOT_COUNT = 10; // マイクラ風: 所持スロットは10個固定
 const INVENTORY_STACK_LIMIT = 99; // 1スロットあたりの最大スタック数
@@ -102,6 +103,8 @@ class Character {
 
     // 生命・欲求
     this.hunger = restore && typeof restore.hunger === 'number' ? restore.hunger : 100;
+    // 代謝率(裏設定): 空腹の減りやすさに個体差を持たせる。UI/性格説明には一切表示しない
+    this.metabolismRate = (restore && restore.metabolismRate) || (0.8 + Math.random() * 0.4);
     this.hp = restore && typeof restore.hp === 'number' ? restore.hp : 100;
     this.gender = (restore && restore.gender) || (Math.random() < 0.5 ? 'male' : 'female');
     this.ageYears = restore && typeof restore.ageYears === 'number' ? restore.ageYears : 16 + Math.random() * 20;
@@ -217,7 +220,7 @@ class Character {
   }
 
   // 素材からの動的クラフト、および建材が貯まった際の建築(コストは自ら評価し消費する)
-  _checkCraftingAndBuilding(dt) {
+  _checkCraftingAndBuilding(dt, currentDay) {
     this._craftCooldown -= dt;
     if (this._craftCooldown <= 0) {
       this._craftCooldown = 10 + Math.random() * 10;
@@ -226,7 +229,7 @@ class Character {
     this._buildCooldown -= dt;
     if (this._buildCooldown <= 0) {
       this._buildCooldown = 20 + Math.random() * 20;
-      const built = tryConstructBuilding(this, this.map);
+      const built = tryConstructBuilding(this, this.map, currentDay);
       if (built) this.actionCounts.building += 1;
     }
   }
@@ -244,6 +247,17 @@ class Character {
     const disposableSlot = this.inventorySlots.find((s) => s && !FOOD_VALUES[s.item] && !isEquipment(s.item));
     if (!disposableSlot) return;
     const item = disposableSlot.item;
+
+    // 近くにチェストがあれば、廃棄より先に収納を試みる
+    const nearChest = this.map.buildings.find((b) => b.category === 'chest' && this.distTo(b.x, b.y) < 3);
+    if (nearChest) {
+      const stored = addToSlotArray(nearChest.chestSlots, item, disposableSlot.count);
+      if (stored > 0) {
+        this.removeFromInventory(item, stored);
+        this._setEmote('チェストにしまった');
+        return;
+      }
+    }
 
     const nearWater = this._isNearWater();
     const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && b.lit && this.distTo(b.x, b.y) < 3);
@@ -346,7 +360,7 @@ class Character {
     if (ratio >= 1) this.hp -= dt * 2.5; // 寿命超過で衰弱
 
     // 空腹・体力の増減(天候で悪天候時は消耗が早い)
-    const hungerRate = 0.12 * (ctx.fatigueMul || 1);
+    const hungerRate = BASE_HUNGER_RATE * this.metabolismRate * (ctx.fatigueMul || 1);
     this.hunger = Math.max(0, this.hunger - dt * hungerRate);
     if (this.hunger <= 0) this.hp = Math.max(0, this.hp - dt * 2);
     else if (this.hunger > 40 && this.hp < 100) this.hp = Math.min(100, this.hp + dt * 0.3);
@@ -429,7 +443,7 @@ class Character {
     }
 
     this._updateEquipmentBonus();
-    this._checkCraftingAndBuilding(dt);
+    this._checkCraftingAndBuilding(dt, ctx.currentDay);
     this._checkDisposal(dt);
   }
 
@@ -860,6 +874,7 @@ class Character {
       dynamicJob: this.dynamicJob, actionCounts: this.actionCounts, nightWaterTime: this.nightWaterTime,
       qualifications: this.qualifications, baseAtk: this.baseAtk, baseDef: this.baseDef, atkSpeed: this.atkSpeed,
       cultName: this.cultName, pendingCultCommand: this.pendingCultCommand, _originalJobBeforeMayor: this._originalJobBeforeMayor,
+      metabolismRate: this.metabolismRate,
     };
   }
 }
