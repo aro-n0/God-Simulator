@@ -9,6 +9,7 @@ const BUILDING_DEFS = {
   house_hide: { category: 'house', label: '虎皮の狩人小屋', cost: { 虎皮: 4, 木材: 10 }, theme: 'hide' },
   house_clay: { category: 'house', label: '土造りの家', cost: { 土: 20, 砂: 8 }, theme: 'clay' },
   campfire: { category: 'campfire', label: '焚き火', cost: { 枝: 4, 石: 3 }, theme: 'fire' },
+  chest: { category: 'chest', label: 'チェスト', cost: { 木材: 15, 鉄: 3 }, theme: 'wood' },
   grand_hall_stone: { category: 'large_house', label: '石造りの礼拝堂', cost: { 石材: 45, 鉄: 5, 木材: 10 }, theme: 'stone' },
   grand_hall_gold: { category: 'large_house', label: '黄金の館', cost: { 金: 15, 石材: 30, 木材: 15 }, theme: 'gold' },
 };
@@ -28,6 +29,9 @@ function pickBuildingPlan(character) {
   if (counts.石材 >= BUILDING_DEFS.grand_hall_stone.cost.石材 && canAfford(character, BUILDING_DEFS.grand_hall_stone.cost)) {
     return 'grand_hall_stone';
   }
+
+  // 収納が欲しくなったら(手持ちが多くチェスト分の素材も賄える)チェストを建てることがある
+  if (canAfford(character, BUILDING_DEFS.chest.cost) && Math.random() < 0.15) return 'chest';
 
   // 通常サイズの家: 最も豊富な素材のテーマを選ぶ
   const candidates = [
@@ -59,7 +63,7 @@ function payCost(character, cost) {
 }
 
 // キャラクターが自らコストを評価し、賄えるなら建物を1つ建てる(建てた種別IDを返す。建てなければnull)
-function tryConstructBuilding(character, map) {
+function tryConstructBuilding(character, map, currentDay) {
   const planId = pickBuildingPlan(character);
   if (!planId) return null;
   const def = BUILDING_DEFS[planId];
@@ -70,7 +74,7 @@ function tryConstructBuilding(character, map) {
   if (tooClose) return null;
 
   payCost(character, def.cost);
-  map.buildings.push({
+  const building = {
     id: 'bld_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
     type: planId,
     category: def.category,
@@ -81,6 +85,9 @@ function tryConstructBuilding(character, map) {
     ownerId: character.id,
     ownerName: character.params.name,
     lit: def.category === 'campfire' ? true : undefined,
-  });
+    constructedAtDay: currentDay != null ? currentDay : 0,
+  };
+  if (def.category === 'chest') building.chestSlots = new Array(60).fill(null);
+  map.buildings.push(building);
   return planId;
 }
