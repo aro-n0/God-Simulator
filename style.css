@@ -817,7 +817,8 @@ button:hover {
 
 #char-modal .famicom-modal-box,
 #animal-modal .famicom-modal-box,
-#codex-modal .famicom-modal-box {
+#codex-modal .famicom-modal-box,
+#chest-modal .famicom-modal-box {
   width: 480px;
   max-height: 88vh;
   overflow: visible;
@@ -874,3 +875,43 @@ button:hover {
   padding: 4px 8px;
 }
 
+
+/* チェスト(60スロット収納)グリッド */
+.chest-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  max-height: 60vh;
+}
+
+.chest-slot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: #1a2a38;
+  border: 1px solid #444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+}
+
+.chest-slot:not(.empty) {
+  cursor: pointer;
+  border-color: #6b4a2b;
+}
+
+.chest-slot-icon {
+  width: 70%;
+  height: 70%;
+  image-rendering: pixelated;
+}
+
+.chest-slot-count {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 9px;
+  color: #ffe066;
+  text-shadow: 1px 1px 0 #000;
+}
