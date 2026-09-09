@@ -617,3 +617,19 @@ function buildCampfireExtinguishedIcon() {
   _px(ctx, 9, 6, 2, 4, '#2b3a2b');
   return cnv;
 }
+
+// チェスト(木箱+金属の縁取り)
+function buildChestIcon() {
+  const size = 18;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 2, 6, 14, 10, '#6b4a2b');
+  _px(ctx, 2, 6, 14, 3, '#8a5a35');
+  _px(ctx, 2, 6, 14, 1, '#a9793f');
+  _px(ctx, 1, 9, 16, 1, '#4a3018');
+  _px(ctx, 7, 9, 4, 3, '#e6c85c');
+  _px(ctx, 8, 10, 2, 2, '#3a2a18');
+  return cnv;
+}
