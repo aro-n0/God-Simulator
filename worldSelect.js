@@ -51,6 +51,7 @@ function renderWorldList() {
           seed: world.seed, characters: world.characters, worldId: world.id,
           unlockedCodex: world.unlockedCodex, discoveredAnimalTypes: world.discoveredAnimalTypes,
           buildings: world.buildings, groundItems: world.groundItems, dynamicItemRegistry: world.dynamicItemRegistry,
+          villages: world.villages,
         });
       }
     });
