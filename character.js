@@ -55,7 +55,7 @@ function pickMood(arr) {
 }
 
 const FOOD_VALUES = {
-  小麦: 12, リンゴ: 14, 野菜: 13, 牛肉: 20, 牛乳: 10, 卵: 8, 豚肉: 18, 鶏肉: 16, 羊肉: 19,
+  小麦: 12, リンゴ: 14, 野菜: 13, 牛肉: 20, 牛乳: 10, 卵: 8, 豚肉: 18, 鶏肉: 16, 羊肉: 19, パン: 30, 魚: 15,
 };
 // 素材の精製(伐採/採掘した原材料を加工品に変える。休憩中にまれに行う)
 const RAW_TO_PROCESSED = { 原木: '木材', 石: '石材', 鉄鉱石: '鉄', 金鉱石: '金' };
@@ -125,6 +125,7 @@ class Character {
     this.dynamicJob = (restore && restore.dynamicJob) || null; // AI創出の「称号」
     this.cultName = (restore && restore.cultName) || null;
     this.pendingCultCommand = (restore && restore.pendingCultCommand) || null;
+    this._originalJobBeforeMayor = (restore && restore._originalJobBeforeMayor) || null;
     this.qualifications = (restore && restore.qualifications) || []; // システム上の「資格」(累積保持)
     this._jobEvalCooldown = 8;
 
@@ -245,7 +246,7 @@ class Character {
     const item = disposableSlot.item;
 
     const nearWater = this._isNearWater();
-    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && this.distTo(b.x, b.y) < 3);
+    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && b.lit && this.distTo(b.x, b.y) < 3);
 
     let method;
     if (nearWater) method = 'sea';
@@ -325,6 +326,7 @@ class Character {
   update(dt, ctx) {
     if (this.isRemoteMirror) return;
     ctx = ctx || {};
+    this._currentWeather = ctx.weather; // _updateWander等の下位メソッドから天候を参照できるようにする
     if (this.hp <= 0) { this.isDead = true; return; }
 
     this.emoteTimer -= dt;
@@ -436,7 +438,7 @@ class Character {
     if (!key) return;
     this.removeFromInventory(key, 1);
     let value = FOOD_VALUES[key] || 10;
-    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && this.distTo(b.x, b.y) < 3);
+    const nearFire = this.map.buildings.some((b) => b.category === 'campfire' && b.lit && this.distTo(b.x, b.y) < 3);
     if (nearFire) { value *= 1.5; this.actionCounts.cooking += 1; }
     this.hunger = Math.min(100, this.hunger + value);
     this.state = STATES.EAT;
@@ -490,6 +492,26 @@ class Character {
       if (this.distTo(gt.x, gt.y) < 8 && Math.random() < 0.002) {
         if (this.addToInventory('伝説の枝', 1) > 0) this._setEmote('伝説の枝を見つけた！');
       }
+      // 超巨大樹への放火は人間の意図的な行動によってのみ発生する(自然発火・自動燃焼はしない)
+      const notRaining = this._currentWeather !== 'rain' && this._currentWeather !== 'blessed_rain' && this._currentWeather !== 'storm';
+      if (notRaining && this.map.giantTreeBurning.size === 0 && this.distTo(gt.x, gt.y) < 5 && Math.random() < 0.0006) {
+        if (this.map.igniteGiantTree()) {
+          this._setEmote('超巨大樹に火を放った');
+          this.addMemory('超巨大樹に火を放った', 8);
+        }
+      }
+    }
+
+    // 消火した焚き火は、雨でなければ誰でも自由に再点火できる
+    const notRainingNow = this._currentWeather !== 'rain' && this._currentWeather !== 'blessed_rain' && this._currentWeather !== 'storm';
+    if (notRainingNow) {
+      const dimFire = this.map.buildings.find((b) => b.category === 'campfire' && !b.lit && this.distTo(b.x, b.y) < 2);
+      if (dimFire && Math.random() < 0.05) { dimFire.lit = true; this._setEmote('焚き火に火を灯した'); }
+    }
+
+    // 浅瀬漁: 資格不要で誰でも手づかみによる魚の獲得が可能
+    if (this.map.isShallowWaterTile(this.x, this.y) && Math.random() < 0.01) {
+      if (this.addToInventory('魚', 1) > 0) this._setEmote('魚を手づかみで捕まえた');
     }
 
     // 空腹なら食料源を優先探索、平常時は木/石などの資源探索
@@ -661,14 +683,20 @@ class Character {
     this.stamina += dt * 8;
     this.restStreak += dt;
     if (Math.random() < 0.01) this._setEmote(pickEmote(EMOTES.REST));
-    // 素材を精製することがある(原木→木材、石→石材、鉱石→金属)
+    // 素材を精製することがある(原木→木材、石→石材、鉱石→金属)。全人間が資格不要で行える基本アクション。
     if (!this._cookedThisRest) {
-      const rawKey = Object.keys(RAW_TO_PROCESSED).find((k) => this.getItemCount(k) > 0);
-      if (rawKey && Math.random() < 0.4) {
-        this.removeFromInventory(rawKey, 1);
-        const processed = RAW_TO_PROCESSED[rawKey];
-        this.addToInventory(processed, 1);
-        this._setEmote('加工中');
+      if (this.getItemCount('小麦') >= 2 && Math.random() < 0.3) {
+        this.removeFromInventory('小麦', 2);
+        this.addToInventory('パン', 1);
+        this._setEmote('パンを焼いた');
+      } else {
+        const rawKey = Object.keys(RAW_TO_PROCESSED).find((k) => this.getItemCount(k) > 0);
+        if (rawKey && Math.random() < 0.4) {
+          this.removeFromInventory(rawKey, 1);
+          const processed = RAW_TO_PROCESSED[rawKey];
+          this.addToInventory(processed, 1);
+          this._setEmote('加工中');
+        }
       }
       this._cookedThisRest = true;
     }
@@ -691,11 +719,15 @@ class Character {
     if (this.map.isWaterTile(this.x, this.y)) {
       waterMul = this.qualifications.includes('漁業') ? 0.8 : 0.5;
     }
-    const speed = this.params.speed * speedMul * waterMul * dt;
+    // 極度の空腹はスタミナ切れとして移動速度を落とす(行動不能にはしない)
+    const hungerMul = this.hunger <= 0 ? 0.5 : this.hunger < 15 ? 0.75 : 1;
+    const speed = this.params.speed * speedMul * waterMul * hungerMul * dt;
     const step = Math.min(speed, d);
     const nx = this.x + (dx / d) * step;
     const ny = this.y + (dy / d) * step;
-    if (this.map.isWalkable(nx, ny)) {
+    // 深い海は漁師資格保持者のみ進入可能(一般人は浅瀬までしか行けない)
+    const blockedByDeepSea = this.map.isDeepWaterTile(nx, ny) && !this.qualifications.includes('漁業');
+    if (this.map.isWalkable(nx, ny) && !blockedByDeepSea) {
       this.x = nx; this.y = ny;
       this.facing = dx >= 0 ? 1 : -1;
     } else {
@@ -827,7 +859,7 @@ class Character {
       prayCount: this.prayCount, relationships: this.relationships, memories: this.memories, acquiredPersonality: this.acquiredPersonality,
       dynamicJob: this.dynamicJob, actionCounts: this.actionCounts, nightWaterTime: this.nightWaterTime,
       qualifications: this.qualifications, baseAtk: this.baseAtk, baseDef: this.baseDef, atkSpeed: this.atkSpeed,
-      cultName: this.cultName, pendingCultCommand: this.pendingCultCommand,
+      cultName: this.cultName, pendingCultCommand: this.pendingCultCommand, _originalJobBeforeMayor: this._originalJobBeforeMayor,
     };
   }
 }
