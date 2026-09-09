@@ -198,6 +198,7 @@ const QUALIFICATION_DEFS = {
   兵士: '治安維持・警備・戦闘を担い、装備補正を最大限活かせる資格',
   吟遊詩人: '噂や出来事を広め、歌で感情を癒し対価を得られる資格',
   魔法使い: '杖を用いてランドマーク研究や天候変化などの奇跡を起こせる資格',
+  村長: '村の統治権を持つ資格。都市計画・税率・共有備蓄庫の管理を行える(1村につき常に1人)',
 };
 
 // 資格によっては専用道具の所持が条件になる({資格名: 必要な道具アイテム名})
@@ -223,7 +224,7 @@ function evaluateQualifications(character) {
 
   if (job === '鍛冶師' || counts.mining >= 15) grant('鍛冶師');
   if (job === '鉱夫' || (hasTool('鉱夫') && counts.mining >= 3)) grant('鉱夫');
-  if (job === '木こり' || job === 'きこり' || counts.woodcutting >= 10) grant('大工');
+  if (job === '大工' || counts.woodcutting >= 10) grant('大工');
   if (hasTool('料理人') && counts.cooking >= 1) grant('料理人');
   if (job === '漁師' || character.params.canFish) grant('漁業');
   if (job === '農民' || (hasTool('農民') && counts.farming >= 1)) grant('農民');
@@ -322,17 +323,46 @@ function attemptBarter(a, b) {
 // ============ 社会組織: 村長・教団 ============
 
 // クラスタ内で村長が未任命なら、最もCHAが高い者を村長に任命する
-function assignMayorIfNeeded(clusterMembers) {
-  if (clusterMembers.some((m) => m.titleTags.includes('村長'))) return null;
+// クラスタ内の村長を任命/維持する。村長資格は1村につき常に1人だけ(交代時は旧村長から剥奪)。
+// 無職者が村長になった場合は職業名も「村長」にする。既に職業がある場合は職業名を維持し資格のみ追加する。
+function assignOrUpdateMayor(clusterMembers, allCharacters, villageName, map) {
+  if (!map.villages) map.villages = {};
+  if (!map.villages[villageName]) map.villages[villageName] = { color: randomVillageColor(), mayorId: null };
+  const villageInfo = map.villages[villageName];
+
+  const stillMayor = clusterMembers.find((m) => m.id === villageInfo.mayorId);
+  if (stillMayor) return stillMayor; // 既に有効な村長がいれば維持(不要な交代を避ける)
+
   const candidate = clusterMembers.reduce((best, m) => (!best || (m.params.cha || 0) > (best.params.cha || 0) ? m : best), null);
-  if (candidate) {
-    candidate.titleTags.push('村長');
-    candidate.addMemory('村長に選ばれた', 8);
-    clusterMembers.forEach((m) => {
-      if (m !== candidate) { m.setRelationType(candidate.id, '村長'); m.adjustFavorability(candidate.id, 5); }
-    });
+  if (!candidate) return null;
+
+  // 旧村長がいれば資格・職業を剥奪(村を離れた/死亡した場合も含めallCharactersから探す)
+  if (villageInfo.mayorId) {
+    const oldMayor = allCharacters.find((m) => m.id === villageInfo.mayorId);
+    if (oldMayor) revokeMayor(oldMayor);
   }
+
+  if (!candidate.qualifications.includes('村長')) candidate.qualifications.push('村長');
+  if (!candidate.params.job) {
+    candidate._originalJobBeforeMayor = null;
+    candidate.params.job = '村長';
+  }
+  villageInfo.mayorId = candidate.id;
+  candidate.addMemory(`${villageName}の村長に選ばれた`, 8);
+  clusterMembers.forEach((m) => {
+    if (m !== candidate) { m.setRelationType(candidate.id, '村長'); m.adjustFavorability(candidate.id, 5); }
+  });
   return candidate;
+}
+
+function revokeMayor(character) {
+  character.qualifications = character.qualifications.filter((q) => q !== '村長');
+  if (character.params.job === '村長') character.params.job = character._originalJobBeforeMayor || null;
+}
+
+function randomVillageColor() {
+  const hue = Math.floor(Math.random() * 360);
+  return `hsl(${hue}, 65%, 55%)`;
 }
 
 function foundCult(character, cultName) {
