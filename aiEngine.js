@@ -298,7 +298,7 @@ function attemptBarter(a, b) {
 
   const valueA = estimateItemValue(offerFromA);
   const valueB = estimateItemValue(offerFromB);
-  const favor = (a.getFavorability(b.id) + b.getFavorability(a.id)) / 2;
+  const favor = (a.getLove(b.id) + b.getLove(a.id)) / 2;
   const tolerance = 1 + Math.max(0, favor) / 100;
   if (valueA > valueB * 2 * tolerance || valueB > valueA * 2 * tolerance) return null;
 
@@ -313,8 +313,12 @@ function attemptBarter(a, b) {
   }
   a.addToInventory(offerFromB, movedB);
   b.addToInventory(offerFromA, movedA);
-  a.adjustFavorability(b.id, 5);
-  b.adjustFavorability(a.id, 5);
+  a.adjustLove(b.id, 5);
+  b.adjustLove(a.id, 5);
+  // 不利益なトレード(受け取った価値が明らかに少ない)だった側は不満(Grudge)が溜まる
+  const totalValueA = valueA * movedA, totalValueB = valueB * movedB;
+  if (totalValueA > totalValueB * 1.6) b.adjustGrudge(a.id, 10);
+  if (totalValueB > totalValueA * 1.6) a.adjustGrudge(b.id, 10);
   a.addMemory(`${b.params.name}と物々交換した(${offerFromA}⇔${offerFromB})`, 3);
   b.addMemory(`${a.params.name}と物々交換した(${offerFromB}⇔${offerFromA})`, 3);
   return { itemA: offerFromA, qtyA: movedA, itemB: offerFromB, qtyB: movedB };
@@ -350,7 +354,7 @@ function assignOrUpdateMayor(clusterMembers, allCharacters, villageName, map) {
   villageInfo.mayorId = candidate.id;
   candidate.addMemory(`${villageName}の村長に選ばれた`, 8);
   clusterMembers.forEach((m) => {
-    if (m !== candidate) { m.setRelationType(candidate.id, '村長'); m.adjustFavorability(candidate.id, 5); }
+    if (m !== candidate) { m.setRelationType(candidate.id, '村長'); m.adjustRespect(candidate.id, 15); }
   });
   return candidate;
 }
