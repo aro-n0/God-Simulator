@@ -37,7 +37,7 @@ const TILE_COLORS = {
 
 const TILE_SIZE = 16; // ワールド座標上の1タイルのピクセル基準サイズ
 
-const CROP_STAGE_DURATION = 12; // 1成長段階に必要な秒数（雨で短縮）
+const CROP_STAGE_DURATION = 480; // 1成長段階に必要な秒数(3段階で1年=1440秒。雨で倍速)
 const CROP_TYPES = ['wheat', 'apple', 'vegetable'];
 const LANDMARK_RADIUS = 4.5; // 巨大ランドマークの半径(タイル)。街1つ分・湖と同等の規模。
 
@@ -358,13 +358,20 @@ class GameMap {
     return t.type === TILE_TYPES.SEA;
   }
 
+  // 大穴(アビス): 動物は進入禁止、人間のみ進入可能
+  isAbyssTile(x, y) {
+    const t = this.getTile(Math.floor(x), Math.floor(y));
+    if (!t) return false;
+    return t.type === TILE_TYPES.GIANT_HOLE;
+  }
+
   // 枯れた木/巨木を年数(ゲーム内日=年)に応じてランダム復活させる
-  // 普通木: 5〜10年、大木: 10〜15年
+  // 普通木: 5〜7年、大木: 7〜10年
   updateTreeRespawns(currentDay) {
     for (const r of this.resources) {
       if ((r.type !== 'tree' && r.type !== 'big_tree') || r.amount > 0) continue;
       if (r.respawnDay == null) {
-        r.respawnDay = currentDay + (r.type === 'big_tree' ? 10 + Math.random() * 5 : 5 + Math.random() * 5);
+        r.respawnDay = currentDay + (r.type === 'big_tree' ? 7 + Math.random() * 3 : 5 + Math.random() * 2);
       } else if (currentDay >= r.respawnDay) {
         r.amount = r.maxAmount;
         r.respawnDay = null;
