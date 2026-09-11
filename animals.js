@@ -53,7 +53,8 @@ function makeAnimal(type, x, y) {
     eggTimer: 0,
     wanderTarget: null,
     wanderTimer: 0,
-    hunger: type === 'tiger' ? 100 : undefined, // 虎のみ空腹ゲージを持つ(3ゲーム日で100→0)
+    hunger: type === 'tiger' ? 100 : undefined, // 虎のみ空腹ゲージを持つ(3年で100→0、個体差あり)
+    metabolismRate: type === 'tiger' ? 0.8 + Math.random() * 0.4 : undefined,
     huntTarget: null,
   };
 }
@@ -84,7 +85,7 @@ function updateAnimals(map, dt) {
     a.attackTimer = Math.max(0, a.attackTimer - dt);
     a.shearTimer = Math.max(0, a.shearTimer - dt);
     a.eggTimer = Math.max(0, a.eggTimer - dt);
-    if (a.type === 'tiger') a.hunger = Math.max(0, (a.hunger == null ? 100 : a.hunger) - dt * ANIMAL_HUNGER_RATE);
+    if (a.type === 'tiger') a.hunger = Math.max(0, (a.hunger == null ? 100 : a.hunger) - dt * ANIMAL_HUNGER_RATE * (a.metabolismRate || 1));
 
     if (a.amount <= 0) {
       a.respawnTimer -= dt;
@@ -94,7 +95,7 @@ function updateAnimals(map, dt) {
           a.x = Math.floor(Math.random() * map.width);
           a.y = Math.floor(Math.random() * map.height);
           tries++;
-        } while ((!map.isWalkable(a.x, a.y) || map.isWaterTile(a.x, a.y)) && tries < 50);
+        } while ((!map.isWalkable(a.x, a.y) || map.isWaterTile(a.x, a.y) || map.isAbyssTile(a.x, a.y)) && tries < 50);
         a.amount = a.maxAmount;
       }
       continue;
@@ -120,7 +121,7 @@ function updateAnimals(map, dt) {
       const step = Math.min(def.speed * waterMul * dt, d);
       const nx = a.x + (dx / d) * step;
       const ny = a.y + (dy / d) * step;
-      if (map.isWalkable(nx, ny) && !map.isWaterTile(nx, ny)) { a.x = nx; a.y = ny; }
+      if (map.isWalkable(nx, ny) && !map.isWaterTile(nx, ny) && !map.isAbyssTile(nx, ny)) { a.x = nx; a.y = ny; }
     }
   }
 }
