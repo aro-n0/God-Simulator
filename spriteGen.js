@@ -633,3 +633,19 @@ function buildChestIcon() {
   _px(ctx, 8, 10, 2, 2, '#3a2a18');
   return cnv;
 }
+
+// 村のシンボルオブジェ(石造りの記念碑)
+function buildVillageSymbolIcon() {
+  const size = 20;
+  const cnv = document.createElement('canvas');
+  cnv.width = size; cnv.height = size;
+  const ctx = cnv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  _px(ctx, 3, 16, 14, 3, '#5c5c5c');
+  _px(ctx, 5, 12, 10, 5, '#7d7d7d');
+  _px(ctx, 7, 4, 6, 9, '#8a8a8a');
+  _px(ctx, 8, 2, 4, 3, '#a0a0a0');
+  _px(ctx, 9, 6, 2, 5, '#5c5c5c');
+  _px(ctx, 6, 13, 8, 1, '#e6c85c');
+  return cnv;
+}
