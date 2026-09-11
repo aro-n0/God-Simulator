@@ -915,3 +915,13 @@ button:hover {
   color: #ffe066;
   text-shadow: 1px 1px 0 #000;
 }
+
+.affiliation-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  color: #9fe0a8;
+}
+
+.affiliation-link:hover {
+  color: #c8ffcf;
+}
