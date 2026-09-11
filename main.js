@@ -7,10 +7,10 @@ let game;
 const WEATHER_EFFECTS = {
   clear: { moveSpeedMul: 1, fatigueMul: 1, cropGrowthMul: 1, treeRegenMul: 0, label: '☀ 晴れ' },
   cloudy: { moveSpeedMul: 1, fatigueMul: 1, cropGrowthMul: 1.1, treeRegenMul: 0.1, label: '☁ 曇り' },
-  rain: { moveSpeedMul: 0.85, fatigueMul: 1.2, cropGrowthMul: 1.5, treeRegenMul: 0.3, label: '🌧 雨' },
-  blessed_rain: { moveSpeedMul: 0.9, fatigueMul: 1.1, cropGrowthMul: 2.2, treeRegenMul: 0.8, label: '🌦 恵みの雨' },
+  rain: { moveSpeedMul: 0.85, fatigueMul: 1.2, cropGrowthMul: 2, treeRegenMul: 0.3, label: '🌧 雨' },
+  blessed_rain: { moveSpeedMul: 0.9, fatigueMul: 1.1, cropGrowthMul: 2.5, treeRegenMul: 0.8, label: '🌦 恵みの雨' },
   wind: { moveSpeedMul: 0.8, fatigueMul: 1.15, cropGrowthMul: 1, treeRegenMul: 0, label: '🌬 強風' },
-  storm: { moveSpeedMul: 0.7, fatigueMul: 1.3, cropGrowthMul: 1.3, treeRegenMul: 0.4, label: '⛈ 雷雨' },
+  storm: { moveSpeedMul: 0.7, fatigueMul: 1.3, cropGrowthMul: 2, treeRegenMul: 0.4, label: '⛈ 雷雨' },
 };
 // 基本は晴れ/曇り。雨・雷雨・強風は滅多に発生しないレア天候とする
 const WEATHER_ORDER = ['clear', 'cloudy', 'rain', 'blessed_rain', 'wind', 'storm'];
@@ -25,6 +25,10 @@ const VILLAGE_NAME_POOL = [
   'あさひ村', 'みどり村', 'かぜの村', 'いずみ村', 'たいよう村', 'つき村', 'ひかり村', 'くろがね村',
   'みずほ村', 'あおば村', 'さくら村', 'ゆき村', 'ほし村', 'もり村', 'かわ村', 'やま村', 'うみ村',
   'ふじ村', 'こだま村', 'せせらぎ村', 'たそがれ村', 'あかね村', 'しらゆき村', 'こはく村',
+];
+// 草地(黄緑)と同化しない、鮮やかで視認性の高い固有色(不透過率35〜40%で塗る)
+const VILLAGE_COLOR_POOL = [
+  '#00e5ff', '#ff00c8', '#ff8800', '#8c52ff', '#ff3b3b', '#00c8a0', '#2979ff', '#ffab00', '#e040fb', '#ff5252',
 ];
 
 function breedChild(parentA, parentB) {
@@ -171,6 +175,10 @@ class Game {
     if (building.category === 'chest') {
       if (!this.icons.chest) this.icons.chest = buildChestIcon();
       return this.icons.chest;
+    }
+    if (building.category === 'symbol') {
+      if (!this.icons.village_symbol) this.icons.village_symbol = buildVillageSymbolIcon();
+      return this.icons.village_symbol;
     }
     const key = building.type;
     if (!this.buildingIconCache[key]) {
@@ -367,9 +375,15 @@ class Game {
     document.getElementById('codex-modal-close').addEventListener('click', () => this._closeModal('codex-modal'));
     document.getElementById('building-modal-close').addEventListener('click', () => this._closeModal('building-modal'));
     document.getElementById('chest-modal-close').addEventListener('click', () => this._closeModal('chest-modal'));
-    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal', 'codex-modal', 'building-modal', 'chest-modal'].forEach((id) => {
+    document.getElementById('village-modal-close').addEventListener('click', () => this._closeModal('village-modal'));
+    ['char-modal', 'roster-modal', 'creator-modal', 'animal-modal', 'codex-modal', 'building-modal', 'chest-modal', 'village-modal'].forEach((id) => {
       const modal = document.getElementById(id);
       modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+    });
+
+    document.getElementById('char-modal-affiliation').addEventListener('click', () => {
+      const c = this._modalChar;
+      if (c && c.affiliation && c.affiliation !== '無所属') this._openVillageModal(c.affiliation);
     });
 
     document.getElementById('btn-open-roster').addEventListener('click', () => {
@@ -382,7 +396,44 @@ class Game {
     });
   }
 
-  // 建物タップ時の情報表示(名前/滞在人数/所有者/建設者と経過日数)。焚き火等の設備は滞在人数を非表示にする
+  // 村情報モーダル: 所属人数・住民一覧(タップでキャラ詳細)・職業一覧・平均言語レベル
+  _openVillageModal(name) {
+    document.getElementById('village-modal-name').textContent = name;
+    const residents = this.characters.filter((c) => c.affiliation === name);
+    document.getElementById('village-modal-population').textContent = `${residents.length}人`;
+    const avgLang = residents.length ? residents.reduce((s, c) => s + c.languageLevel, 0) / residents.length : 0;
+    document.getElementById('village-modal-avglang').textContent = `Lv ${avgLang.toFixed(1)}`;
+
+    const jobs = [...new Set(residents.map((c) => c.params.job).filter(Boolean))];
+    const jobsEl = document.getElementById('village-modal-jobs');
+    jobsEl.innerHTML = '';
+    if (jobs.length === 0) {
+      jobsEl.innerHTML = '<span class="ws-empty">なし</span>';
+    } else {
+      jobs.forEach((j) => {
+        const tag = document.createElement('span');
+        tag.className = 'tag tag-qualification';
+        tag.textContent = `[${j}]`;
+        jobsEl.appendChild(tag);
+      });
+    }
+
+    const listEl = document.getElementById('village-modal-residents');
+    listEl.innerHTML = '';
+    residents.forEach((c) => {
+      const row = document.createElement('div');
+      row.className = 'lib-item';
+      row.innerHTML = `<span class="lib-item-name">${c.params.name}（${c.dynamicJob || c.params.job || '無職'}）</span><button class="lib-spawn-btn">詳細</button>`;
+      row.querySelector('button').addEventListener('click', () => {
+        this._closeModal('village-modal');
+        this._openCharacterModal(c);
+      });
+      listEl.appendChild(row);
+    });
+
+    document.getElementById('village-modal').classList.add('open');
+  }
+
   _openBuildingModal(building) {
     document.getElementById('building-modal-name').textContent = building.label || '建築物';
     const occupants = this.characters.filter((c) => Math.hypot(c.x - building.x, c.y - building.y) < 2).length;
@@ -632,24 +683,24 @@ class Game {
     this._renderRelationships(c);
   }
 
-  // 人間関係: 特別な関係(村長/教祖/伴侶/敵)と好感度の上位・下位を優先表示し、残りは折りたたむ
+  // 人間関係: 特別な関係(村長/教祖/伴侶/敵)と親愛(Love)の上位・下位を優先表示し、残りは折りたたむ
   _renderRelationships(c) {
     const SPECIAL_TYPES = ['村長', '教祖', '伴侶', '敵'];
     const entries = Object.keys(c.relationships).map((id) => {
       const target = this.characters.find((ch) => ch.id === id);
       const r = c.relationships[id];
-      return { id, name: target ? target.params.name : '???', relationType: r.relationType, favorability: r.favorability };
+      return { id, name: target ? target.params.name : '???', relationType: r.relationType, love: r.love, respect: r.respect, grudge: r.grudge };
     });
 
     const special = entries.filter((e) => SPECIAL_TYPES.includes(e.relationType));
-    const rest = entries.filter((e) => !SPECIAL_TYPES.includes(e.relationType)).sort((a, b) => b.favorability - a.favorability);
+    const rest = entries.filter((e) => !SPECIAL_TYPES.includes(e.relationType)).sort((a, b) => b.love - a.love);
     const topN = rest.slice(0, 3);
     const bottomN = rest.slice(-2).filter((e) => !topN.includes(e));
     const primaryIds = new Set([...special, ...topN, ...bottomN].map((e) => e.id));
     const primary = entries.filter((e) => primaryIds.has(e.id)).slice(0, 5);
     const extra = entries.filter((e) => !primaryIds.has(e.id));
 
-    const label = (e) => `${e.name}(${e.relationType || '知人'}:${e.favorability})`;
+    const label = (e) => `${e.name}(${e.relationType || '知人'} 愛${e.love}/尊${e.respect}/怨${e.grudge})`;
     const fillRow = (id, arr) => {
       const el = document.getElementById(id);
       el.innerHTML = '';
@@ -698,7 +749,7 @@ class Game {
         const dx = target.x - tiger.x, dy = target.y - tiger.y;
         const step = Math.min(1.1 * dt, dist);
         const nx = tiger.x + (dx / dist) * step, ny = tiger.y + (dy / dist) * step;
-        if (this.map.isWalkable(nx, ny) && !this.map.isWaterTile(nx, ny)) { tiger.x = nx; tiger.y = ny; }
+        if (this.map.isWalkable(nx, ny) && !this.map.isWaterTile(nx, ny) && !this.map.isAbyssTile(nx, ny)) { tiger.x = nx; tiger.y = ny; }
       } else {
         tiger.attackTimer -= dt;
         if (tiger.attackTimer <= 0) {
@@ -757,17 +808,18 @@ class Game {
 
         const busy = (c) => [STATES.EAT, STATES.SLEEP, STATES.PRAY, STATES.STEAL].includes(c.state);
 
-        // 好感度上昇 + 交流演出
-        const gain = 4 * ((a.params.socialMul || 1) + (b.params.socialMul || 1)) / 2;
-        a.adjustFavorability(b.id, gain);
-        b.adjustFavorability(a.id, gain);
+        // 親愛(Love)の緩やかな上昇。会話だけで一気に満タンにはならない小さな増分にする
+        const loveGain = 1.2 * ((a.params.socialMul || 1) + (b.params.socialMul || 1)) / 2;
+        a.adjustLove(b.id, loveGain);
+        b.adjustLove(a.id, loveGain);
 
-        // 応急手当(空腹回復ではなくHP治療。医師資格があれば治療量が大きい)
+        // 応急手当(空腹回復ではなくHP治療。治療した側は尊敬(Respect)を得る)
         const tryHeal = (healer, patient) => {
           if (patient.hp < 70 && !busy(healer) && !busy(patient)) {
             const amount = healer.qualifications.includes('医師') ? 15 : 5;
             patient.hp = Math.min(100, patient.hp + amount);
             healer.actionCounts.healing += 1;
+            patient.adjustRespect(healer.id, healer.qualifications.includes('医師') ? 8 : 3);
           }
         };
         tryHeal(a, b);
@@ -777,16 +829,16 @@ class Game {
           a.state = STATES.SOCIAL; a.actionTimer = 2.5; a._setEmote(pickDialogue('greeting'));
           b.state = STATES.SOCIAL; b.actionTimer = 2.5; b._setEmote(pickDialogue('friendly'));
           a.actionCounts.socializing += 1; b.actionCounts.socializing += 1;
-          if (a.getFavorability(b.id) >= 80) a._lastSocialBondBonus = true;
-          if (b.getFavorability(a.id) >= 80) b._lastSocialBondBonus = true;
+          if (a.getLove(b.id) >= 80) a._lastSocialBondBonus = true;
+          if (b.getLove(a.id) >= 80) b._lastSocialBondBonus = true;
         }
 
-        // 結婚判定
+        // 結婚判定(相互のLoveが一定以上で成立)
         if (
           !a.partnerId && !b.partnerId && a.gender !== b.gender &&
           a.ageYears >= ADULT_AGE && b.ageYears >= ADULT_AGE &&
           a.languageLevel >= 2 && b.languageLevel >= 2 &&
-          a.getFavorability(b.id) >= 60 && b.getFavorability(a.id) >= 60 &&
+          a.getLove(b.id) >= 60 && b.getLove(a.id) >= 60 &&
           Math.random() < 0.05
         ) {
           a.partnerId = b.id; b.partnerId = a.id;
@@ -795,6 +847,11 @@ class Game {
           if (!a.titleTags.includes('既婚')) a.titleTags.push('既婚');
           if (!b.titleTags.includes('既婚')) b.titleTags.push('既婚');
           a.childCooldown = 10; b.childCooldown = 10;
+          // 恋のバッティング: bに未練のあった第三者がいれば、aへの不満(Grudge)が生まれる
+          for (const rival of alive) {
+            if (rival === a || rival === b || rival.isDead) continue;
+            if (rival.getLove(b.id) >= 40) { rival.adjustGrudge(a.id, 20); a.adjustGrudge(rival.id, 10); }
+          }
         }
 
         // 出産判定
@@ -812,15 +869,16 @@ class Game {
           a.addMemory('子を授かった', 8); b.addMemory('子を授かった', 8);
         }
 
-        // 犯罪(窃盗)判定
+        // 犯罪(窃盗)判定: 被害者は加害者へのGrudgeが上がりLoveが下がる
         const tryTheft = (thief, victim) => {
-          if (thief.hunger < 15 && !thief.hasFood() && thief.stamina < 35 && victim.hasFood() && thief.getFavorability(victim.id) < 20) {
+          if (thief.hunger < 15 && !thief.hasFood() && thief.stamina < 35 && victim.hasFood() && thief.getLove(victim.id) < 20) {
             if (Math.random() < 0.15) {
               const key = victim.getBestFoodItem();
               if (key) {
                 const moved = victim.removeFromInventory(key, 1);
                 if (moved > 0) thief.addToInventory(key, 1);
-                victim.adjustFavorability(thief.id, -30);
+                victim.adjustGrudge(thief.id, 30);
+                victim.adjustLove(thief.id, -15);
                 victim.setRelationType(thief.id, '敵');
                 victim.addMemory(`${thief.params.name}に食料を盗まれた`, 7);
                 thief.addMemory(`${victim.params.name}から食料を盗んだ`, 6);
@@ -835,8 +893,8 @@ class Game {
         tryTheft(a, b);
         tryTheft(b, a);
 
-        // 物々交換(バーター): 好感度がある程度あれば余剰在庫を交換することがある
-        if (!busy(a) && !busy(b) && a.getFavorability(b.id) > 10 && b.getFavorability(a.id) > 10 && Math.random() < 0.05) {
+        // 物々交換(バーター): Loveがある程度あり、Grudgeが低ければ余剰在庫を交換することがある
+        if (!busy(a) && !busy(b) && a.getLove(b.id) > 10 && b.getLove(a.id) > 10 && a.getGrudge(b.id) < 30 && b.getGrudge(a.id) < 30 && Math.random() < 0.05) {
           attemptBarter(a, b);
         }
 
@@ -857,6 +915,7 @@ class Game {
     }
   }
 
+  // ============ 村・領土(WorldBox風の固定グリッド。一度発足したら移動追従せず、他村と重ならない) ============
   _updateVillages() {
     const alive = this.characters.filter((c) => !c.isRemoteMirror && !c.isDead);
     const visited = new Set();
@@ -876,30 +935,103 @@ class Game {
         if (visited.has(other.id)) continue;
         if (Math.hypot(other.x - c.x, other.y - c.y) < 7) { cluster.push(other); visited.add(other.id); }
       }
-      if (cluster.length >= 3) {
-        const avgLang = cluster.reduce((s, m) => s + m.languageLevel, 0) / cluster.length;
-        if (avgLang >= 3) {
-          const existing = cluster.find((m) => m.affiliation !== '無所属');
-          const name = existing ? existing.affiliation : pickVillageName();
-          cluster.forEach((m) => { m.affiliation = name; });
-          assignOrUpdateMayor(cluster, alive, name, this.map);
+      if (cluster.length < 3) continue;
+      const avgLang = cluster.reduce((s, m) => s + m.languageLevel, 0) / cluster.length;
+      if (avgLang < 3) continue;
 
-          // 領土可視化用に村の中心・半径を更新(WorldBox風の透過カラーオーバーレイに使う)
-          if (!this.map.villages) this.map.villages = {};
-          if (!this.map.villages[name]) this.map.villages[name] = { color: this._randomVillageColor() };
-          const cx = cluster.reduce((s, m) => s + m.x, 0) / cluster.length;
-          const cy = cluster.reduce((s, m) => s + m.y, 0) / cluster.length;
-          const radius = Math.max(6, ...cluster.map((m) => Math.hypot(m.x - cx, m.y - cy))) + 3;
-          Object.assign(this.map.villages[name], { x: cx, y: cy, radius });
-        }
+      const existing = cluster.find((m) => m.affiliation !== '無所属');
+      if (existing) {
+        // 既存の村: 名称を揃えるのみで領土は変更しない(固定グリッドを維持し、移動追従させない)
+        const name = existing.affiliation;
+        cluster.forEach((m) => { m.affiliation = name; });
+        assignOrUpdateMayor(cluster, alive, name, this.map);
+      } else {
+        const name = pickVillageName();
+        const cx = cluster.reduce((s, m) => s + m.x, 0) / cluster.length;
+        const cy = cluster.reduce((s, m) => s + m.y, 0) / cluster.length;
+        cluster.forEach((m) => { m.affiliation = name; });
+        this._foundVillage(name, cx, cy, cluster, alive);
       }
+    }
+    this._updateHousing();
+  }
+
+  // 村の発足: 固定領土(他村と重ならない半径)を一度だけ確定し、初期建築を自動生成する
+  _foundVillage(name, cx, cy, cluster, alive) {
+    const BASE_RADIUS = 9;
+    let radius = BASE_RADIUS;
+    for (const otherName in this.map.villages || {}) {
+      const other = this.map.villages[otherName];
+      if (other.centerX == null) continue;
+      const d = Math.hypot(other.centerX - cx, other.centerY - cy);
+      const maxAllowed = d - (other.radius || 0) - 2; // 最低2タイルの間隔を空けて重なりを防ぐ
+      if (maxAllowed < radius) radius = Math.max(4, maxAllowed);
+    }
+    if (!this.map.villages) this.map.villages = {};
+    this.map.villages[name] = { color: this._pickVillageColor(), centerX: cx, centerY: cy, radius };
+
+    assignOrUpdateMayor(cluster, alive, name, this.map);
+    this._spawnInitialVillageBuildings(name, cx, cy, cluster);
+  }
+
+  _pickVillageColor() {
+    const used = new Set(Object.values(this.map.villages || {}).map((v) => v.color));
+    const pool = VILLAGE_COLOR_POOL.filter((c) => !used.has(c));
+    return (pool.length ? pool : VILLAGE_COLOR_POOL)[Math.floor(Math.random() * (pool.length ? pool.length : VILLAGE_COLOR_POOL.length))];
+  }
+
+  _hexToRgba(hex, alpha) {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = (num >> 16) & 0xff, g = (num >> 8) & 0xff, b = num & 0xff;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  // 村発足時の初期建築自動生成: シンボルオブジェ1・共有チェスト1・家1軒(4種からランダム)
+  _spawnInitialVillageBuildings(name, cx, cy, cluster) {
+    const owner = cluster.reduce((best, m) => (!best || (m.params.cha || 0) > (best.params.cha || 0) ? m : best), cluster[0]);
+    const day = this.currentDay;
+    const idBase = 'bld_' + Date.now() + '_';
+
+    this.map.buildings.push({
+      id: idBase + 'symbol', type: 'village_symbol', category: 'symbol', theme: name, label: `${name}の記念碑`,
+      x: cx, y: cy, ownerId: owner.id, ownerName: owner.params.name, constructedAtDay: day,
+    });
+
+    this.map.buildings.push({
+      id: idBase + 'chest', type: 'chest', category: 'chest', theme: 'wood', label: '共有チェスト',
+      x: cx + 1.2, y: cy, ownerId: owner.id, ownerName: owner.params.name, constructedAtDay: day,
+      chestSlots: new Array(60).fill(null),
+    });
+
+    const houseThemes = ['wood', 'stone', 'hide', 'clay'];
+    const theme = houseThemes[Math.floor(Math.random() * houseThemes.length)];
+    const houseDef = BUILDING_DEFS['house_' + theme];
+    this.map.buildings.push({
+      id: idBase + 'house', type: 'house_' + theme, category: 'house', theme,
+      label: houseDef ? houseDef.label : '家', x: cx - 1.2, y: cy + 1,
+      ownerId: owner.id, ownerName: owner.params.name, constructedAtDay: day, residents: [owner.id],
+    });
+  }
+
+  // 家の入居ルール: 1軒最大8人。伴侶または親愛度(Love)の高い相手が住む家にのみ入居できる
+  _updateHousing() {
+    const houses = this.map.buildings.filter((b) => b.category === 'house' || b.category === 'large_house');
+    const residentOf = (id) => houses.find((h) => h.residents && h.residents.includes(id));
+
+    for (const c of this.characters) {
+      if (c.isRemoteMirror || c.isDead) continue;
+      if (residentOf(c.id)) continue;
+
+      if (c.partnerId) {
+        const partnerHouse = residentOf(c.partnerId);
+        if (partnerHouse && partnerHouse.residents.length < 8) { partnerHouse.residents.push(c.id); continue; }
+      }
+
+      const closeHouse = houses.find((h) => h.residents && h.residents.length < 8 && h.residents.some((rid) => c.getLove(rid) >= 60));
+      if (closeHouse && Math.random() < 0.3) closeHouse.residents.push(c.id);
     }
   }
 
-  _randomVillageColor() {
-    const hue = Math.floor(Math.random() * 360);
-    return `hsl(${hue}, 65%, 55%)`;
-  }
 
   // ============ メインループ ============
   _loop(now) {
@@ -995,7 +1127,7 @@ class Game {
     if (!el) return;
     if (this.speedMultiplier === 0) { el.textContent = '⏸ 時間停止中'; return; }
     const phase = this.isNight ? '🌙 夜' : '☀ 昼';
-    el.textContent = `${weatherEffect.label} ${phase} / ${this.currentDay}日目`;
+    el.textContent = `${weatherEffect.label} ${phase} / ${this.currentDay}年目`;
   }
 
   // ============ 描画 ============
@@ -1022,21 +1154,29 @@ class Game {
       }
     }
 
-    // 村の領土(WorldBox風の透過カラーオーバーレイ。20%透過で一目で領域が判別できるようにする)
+    // 村の領土(WorldBox風。固定グリッドで移動追従しない。視認性の高い不透過色38%+輪郭線)
     const villageNames = Object.keys(this.map.villages || {});
     if (villageNames.length > 0) {
       for (const name of villageNames) {
         const v = this.map.villages[name];
-        if (v.x == null || v.radius == null) continue;
-        if (v.x + v.radius < x0 || v.x - v.radius > x1 || v.y + v.radius < y0 || v.y - v.radius > y1) continue;
-        ctx.fillStyle = v.color.replace('hsl', 'hsla').replace(')', ', 0.2)');
-        for (let y = Math.max(y0, Math.floor(v.y - v.radius)); y < Math.min(y1, Math.ceil(v.y + v.radius)); y++) {
-          for (let x = Math.max(x0, Math.floor(v.x - v.radius)); x < Math.min(x1, Math.ceil(v.x + v.radius)); x++) {
-            if (Math.hypot(x - v.x, y - v.y) > v.radius) continue;
+        if (v.centerX == null || v.radius == null) continue;
+        if (v.centerX + v.radius < x0 || v.centerX - v.radius > x1 || v.centerY + v.radius < y0 || v.centerY - v.radius > y1) continue;
+        const fillColor = this._hexToRgba(v.color, 0.38);
+        ctx.fillStyle = fillColor;
+        for (let y = Math.max(y0, Math.floor(v.centerY - v.radius)); y < Math.min(y1, Math.ceil(v.centerY + v.radius)); y++) {
+          for (let x = Math.max(x0, Math.floor(v.centerX - v.radius)); x < Math.min(x1, Math.ceil(v.centerX + v.radius)); x++) {
+            if (Math.hypot(x - v.centerX, y - v.centerY) > v.radius) continue;
             const screen = this.camera.worldToScreen(x * TILE_SIZE, y * TILE_SIZE);
             ctx.fillRect(Math.round(screen.x), Math.round(screen.y), Math.ceil(ts) + 1, Math.ceil(ts) + 1);
           }
         }
+        // はっきりとした境界線
+        const centerScreen = this.camera.worldToScreen(v.centerX * TILE_SIZE, v.centerY * TILE_SIZE);
+        ctx.strokeStyle = v.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerScreen.x, centerScreen.y, v.radius * ts, 0, Math.PI * 2);
+        ctx.stroke();
       }
     }
 
@@ -1077,7 +1217,7 @@ class Game {
       if (b.x < x0 - 4 || b.x > x1 + 4 || b.y < y0 - 4 || b.y > y1 + 4) continue;
       const icon = this._getBuildingIcon(b);
       const screen = this.camera.worldToScreen(b.x * TILE_SIZE, b.y * TILE_SIZE);
-      const sizeMul = b.category === 'large_house' ? 4 : b.category === 'campfire' || b.category === 'chest' ? 1 : 2;
+      const sizeMul = b.category === 'large_house' ? 4 : b.category === 'campfire' || b.category === 'chest' || b.category === 'symbol' ? 1 : 2;
       const iconSize = ts * sizeMul;
       ctx.drawImage(icon, screen.x - iconSize / 2, screen.y - iconSize * 0.7, iconSize, iconSize);
     }
