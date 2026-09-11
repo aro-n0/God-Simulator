@@ -69,6 +69,15 @@ function tryConstructBuilding(character, map, currentDay) {
   const def = BUILDING_DEFS[planId];
   if (!canAfford(character, def.cost)) return null;
 
+  // 自村の領土内にのみ建築可能(村に所属している場合)
+  if (character.affiliation && character.affiliation !== '無所属' && map.villages && map.villages[character.affiliation]) {
+    const v = map.villages[character.affiliation];
+    if (v.centerX != null) {
+      const d = Math.hypot(character.x - v.centerX, character.y - v.centerY);
+      if (d > v.radius) return null;
+    }
+  }
+
   // 近くに既存の建物が密集しすぎていないか確認
   const tooClose = map.buildings.some((b) => Math.hypot(b.x - character.x, b.y - character.y) < 3);
   if (tooClose) return null;
@@ -88,6 +97,7 @@ function tryConstructBuilding(character, map, currentDay) {
     constructedAtDay: currentDay != null ? currentDay : 0,
   };
   if (def.category === 'chest') building.chestSlots = new Array(60).fill(null);
+  if (def.category === 'house' || def.category === 'large_house') building.residents = [character.id];
   map.buildings.push(building);
   return planId;
 }
