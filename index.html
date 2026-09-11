@@ -25,7 +25,7 @@
       <button id="btn-speed-2" class="speed-btn">x2</button>
       <button id="btn-speed-5" class="speed-btn">x5</button>
     </span>
-    <span id="world-clock">☀ 昼 / 1日目</span>
+    <span id="world-clock">☀ 昼 / 1年目</span>
     <span id="room-status">ローカルで動作中</span>
   </div>
 
@@ -129,7 +129,7 @@
         <div id="char-modal-mood-bubble" class="mood-bubble"></div>
         <div class="famicom-info">
           <div class="famicom-name" id="char-modal-name">-</div>
-          <div class="famicom-row">所属: <span id="char-modal-affiliation">-</span></div>
+          <div class="famicom-row">所属: <span id="char-modal-affiliation" class="affiliation-link">-</span></div>
           <div class="famicom-row">職業: <span id="char-modal-job">-</span></div>
           <div class="famicom-row">称号: <span id="char-modal-title">-</span></div>
           <div class="famicom-row">STR/AGI/INT/CHA: <span id="char-modal-basestats">-</span></div>
@@ -177,6 +177,20 @@
       <div class="famicom-tags">
         <div id="animal-modal-traits" class="tag-row"></div>
       </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 村情報モーダル -->
+  <div id="village-modal" class="famicom-modal">
+    <div class="famicom-modal-box">
+      <button id="village-modal-close" class="famicom-close">×</button>
+      <h2 class="famicom-title" id="village-modal-name">-</h2>
+      <div class="famicom-modal-scroll">
+        <div class="famicom-row">所属人数: <span id="village-modal-population">-</span></div>
+        <div class="famicom-row">平均言語レベル: <span id="village-modal-avglang">-</span></div>
+        <div class="tag-group"><span class="tag-group-label">村内の職業一覧</span><div id="village-modal-jobs" class="tag-row"></div></div>
+        <div class="tag-group"><span class="tag-group-label">所属住民一覧</span><div id="village-modal-residents" class="ws-list"></div></div>
       </div>
     </div>
   </div>
