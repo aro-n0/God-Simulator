@@ -228,9 +228,19 @@ class Character {
     }
     this._buildCooldown -= dt;
     if (this._buildCooldown <= 0) {
-      this._buildCooldown = 20 + Math.random() * 20;
+      const isHomeless = !this.map.buildings.some(
+        (b) => (b.category === 'house' || b.category === 'large_house') && b.residents && b.residents.includes(this.id)
+      );
+      const hasAbundantMaterials = this.getItemCount('木材') >= 20 || this.getItemCount('石材') >= 18 || this.getItemCount('土') >= 20;
+      this._buildCooldown = (isHomeless || hasAbundantMaterials) ? 5 + Math.random() * 8 : 20 + Math.random() * 20;
       const built = tryConstructBuilding(this, this.map, currentDay);
-      if (built) this.actionCounts.building += 1;
+      if (built) {
+        this.actionCounts.building += 1;
+        const newBuilding = this.map.buildings[this.map.buildings.length - 1];
+        if (newBuilding && (newBuilding.category === 'house' || newBuilding.category === 'large_house') && !newBuilding.residents.includes(this.id)) {
+          newBuilding.residents.push(this.id);
+        }
+      }
     }
   }
 
@@ -433,6 +443,7 @@ class Character {
     this.hp = Math.max(0, Math.min(100, this.hp));
     if (this.hp <= 0) this.isDead = true;
     this._checkTraitEvolution(dt);
+    this.decayRelationships(dt);
 
     this._jobEvalCooldown -= dt;
     if (this._jobEvalCooldown <= 0) {
@@ -554,6 +565,19 @@ class Character {
       let ty = this.y + Math.sin(angle) * dist;
       tx = Math.max(1, Math.min(this.map.width - 2, tx));
       ty = Math.max(1, Math.min(this.map.height - 2, ty));
+
+      // 村に所属している場合、自村の領土およびその周辺近辺に行動範囲を限定する
+      const village = this.affiliation && this.map.villages ? this.map.villages[this.affiliation] : null;
+      if (village && village.centerX != null) {
+        const dcx = tx - village.centerX, dcy = ty - village.centerY;
+        const d = Math.hypot(dcx, dcy);
+        const maxD = village.radius + 3;
+        if (d > maxD) {
+          tx = village.centerX + (dcx / d) * maxD;
+          ty = village.centerY + (dcy / d) * maxD;
+        }
+      }
+
       this.wanderTarget = { x: tx, y: ty };
       this.wanderTimer = 3 + Math.random() * 3;
       if (Math.random() < 0.3) this._setEmote(pickEmote(EMOTES.WANDER));
@@ -758,23 +782,78 @@ class Character {
     tryGenerateExperienceTags(this);
   }
 
-  // 能力タグ(ステータスから自動導出)
-  // ============ 人間関係(relationships)・エピソード記憶(memories) ============
-  getFavorability(targetId) {
-    const r = this.relationships[targetId];
-    return r ? r.favorability : 0;
+  // ============ 人間関係(relationships): 親愛/尊敬/不満・怨恨の3軸モデル ============
+  _ensureRel(targetId) {
+    if (!this.relationships[targetId]) {
+      this.relationships[targetId] = { relationType: null, love: 0, respect: 0, grudge: 0, lastInteraction: Date.now() };
+    }
+    return this.relationships[targetId];
   }
 
-  adjustFavorability(targetId, delta) {
-    if (!this.relationships[targetId]) this.relationships[targetId] = { relationType: null, favorability: 0 };
-    const r = this.relationships[targetId];
-    r.favorability = Math.max(-100, Math.min(100, r.favorability + delta));
-    return r.favorability;
+  getLove(targetId) { const r = this.relationships[targetId]; return r ? r.love : 0; }
+  getRespect(targetId) { const r = this.relationships[targetId]; return r ? r.respect : 0; }
+  getGrudge(targetId) { const r = this.relationships[targetId]; return r ? r.grudge : 0; }
+
+  // 互換用: 総合的な好感度に近い値(=親愛)を返す。既存の単純な好感度判定はloveで代用する
+  getFavorability(targetId) { return this.getLove(targetId); }
+
+  adjustLove(targetId, delta) {
+    const r = this._ensureRel(targetId);
+    r.love = Math.max(-100, Math.min(100, r.love + delta));
+    r.lastInteraction = Date.now();
+    this._updateRelationTag(targetId);
+    return r.love;
   }
+
+  adjustRespect(targetId, delta) {
+    const r = this._ensureRel(targetId);
+    r.respect = Math.max(0, Math.min(100, r.respect + delta));
+    r.lastInteraction = Date.now();
+    this._updateRelationTag(targetId);
+    return r.respect;
+  }
+
+  adjustGrudge(targetId, delta) {
+    const r = this._ensureRel(targetId);
+    r.grudge = Math.max(0, Math.min(100, r.grudge + delta));
+    r.lastInteraction = Date.now();
+    this._updateRelationTag(targetId);
+    return r.grudge;
+  }
+
+  // 互換用: adjustFavorabilityはadjustLoveへ委譲する
+  adjustFavorability(targetId, delta) { return this.adjustLove(targetId, delta); }
 
   setRelationType(targetId, relationType) {
-    if (!this.relationships[targetId]) this.relationships[targetId] = { relationType: null, favorability: 0 };
+    this._ensureRel(targetId);
     this.relationships[targetId].relationType = relationType;
+    this.relationships[targetId]._pinned = true; // 村長/教祖/伴侶/敵など明示的に設定された関係は自動更新で上書きしない
+  }
+
+  // love/respect/grudgeの現在値から関係タグ(知人/友人/ライバル/仇等)を自動更新する
+  _updateRelationTag(targetId) {
+    const r = this.relationships[targetId];
+    if (!r || r._pinned) return;
+    if (r.grudge >= 70 && r.love < 10) r.relationType = '仇';
+    else if (r.grudge >= 45) r.relationType = 'ライバル';
+    else if (r.love >= 50) r.relationType = '友人';
+    else r.relationType = '知人';
+  }
+
+  // 長時間交流がない関係は徐々に中立(0)へ減衰させる
+  decayRelationships(dt) {
+    const now = Date.now();
+    for (const id in this.relationships) {
+      const r = this.relationships[id];
+      if (r._pinned) continue; // 村長/教祖/伴侶/敵などの確定関係は減衰しない
+      if (now - (r.lastInteraction || 0) < 30000) continue;
+      const amt = dt * 0.4;
+      if (r.love > 0) r.love = Math.max(0, r.love - amt);
+      else if (r.love < 0) r.love = Math.min(0, r.love + amt);
+      if (r.respect > 0) r.respect = Math.max(0, r.respect - amt * 0.5);
+      if (r.grudge > 0) r.grudge = Math.max(0, r.grudge - amt * 0.5);
+      this._updateRelationTag(id);
+    }
   }
 
   // 体験を短期・長期記憶として記録する(重要度が低いものから古い順に間引かれる)
