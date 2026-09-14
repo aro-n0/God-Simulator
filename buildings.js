@@ -9,7 +9,7 @@ const BUILDING_DEFS = {
   house_hide: { category: 'house', label: '虎皮の狩人小屋', cost: { 虎皮: 4, 木材: 10 }, theme: 'hide' },
   house_clay: { category: 'house', label: '土造りの家', cost: { 土: 20, 砂: 8 }, theme: 'clay' },
   campfire: { category: 'campfire', label: '焚き火', cost: { 枝: 4, 石: 3 }, theme: 'fire' },
-  chest: { category: 'chest', label: 'チェスト', cost: { 木材: 15, 鉄: 3 }, theme: 'wood' },
+  chest: { category: 'chest', label: '備蓄庫', cost: { 木材: 15, 鉄: 3 }, theme: 'wood' },
   grand_hall_stone: { category: 'large_house', label: '石造りの礼拝堂', cost: { 石材: 45, 鉄: 5, 木材: 10 }, theme: 'stone' },
   grand_hall_gold: { category: 'large_house', label: '黄金の館', cost: { 金: 15, 石材: 30, 木材: 15 }, theme: 'gold' },
 };
