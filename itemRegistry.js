@@ -119,6 +119,182 @@ function _ipx(ctx, x, y, w, h, color) {
   ctx.fillRect(x, y, w, h);
 }
 
+// 主要な素材/食料アイテムの専用ドット絵(汎用の塊シルエットより先に判定される)
+const SPECIFIC_ITEM_ICONS = {
+  原木: (ctx) => { // 丸太(木口の年輪が見える横倒しの丸太)
+    _ipx(ctx, 1, 5, 14, 6, '#5a3d24');
+    _ipx(ctx, 1, 5, 14, 1, '#6b4a2b');
+    _ipx(ctx, 0, 4, 3, 8, '#a9793f');
+    _ipx(ctx, 1, 5, 1, 6, '#8a5a35');
+    _ipx(ctx, 13, 4, 3, 8, '#a9793f');
+    _ipx(ctx, 14, 6, 1, 4, '#c9a35f');
+  },
+  枝: (ctx) => {
+    _ipx(ctx, 2, 12, 3, 2, '#5a3d24');
+    _ipx(ctx, 4, 9, 4, 3, '#6b4a2b');
+    _ipx(ctx, 7, 6, 4, 3, '#7a5a35');
+    _ipx(ctx, 10, 3, 3, 3, '#8a6a45');
+  },
+  伝説の枝: (ctx) => {
+    _ipx(ctx, 2, 12, 3, 2, '#5a3d24');
+    _ipx(ctx, 4, 9, 4, 3, '#8a6a2c');
+    _ipx(ctx, 7, 6, 4, 3, '#c9a13c');
+    _ipx(ctx, 10, 3, 3, 3, '#f0d060');
+  },
+  木材: (ctx) => { // 板材
+    _ipx(ctx, 2, 3, 12, 3, '#a9793f');
+    _ipx(ctx, 2, 7, 12, 3, '#8a6a3f');
+    _ipx(ctx, 2, 11, 12, 3, '#a9793f');
+    _ipx(ctx, 2, 3, 12, 1, '#c9a35f');
+    _ipx(ctx, 2, 7, 12, 1, '#c9a35f');
+  },
+  石: (ctx) => {
+    _ipx(ctx, 3, 6, 10, 7, '#5c5c5c');
+    _ipx(ctx, 4, 4, 8, 6, '#7d7d7d');
+    _ipx(ctx, 6, 3, 4, 3, '#9a9a9a');
+    _ipx(ctx, 5, 10, 3, 2, '#3a3a3a');
+  },
+  石材: (ctx) => {
+    _ipx(ctx, 2, 4, 12, 8, '#a0a0a0');
+    _ipx(ctx, 2, 4, 12, 2, '#c0c0c0');
+    _ipx(ctx, 2, 10, 12, 2, '#7d7d7d');
+    _ipx(ctx, 7, 4, 1, 8, '#7d7d7d');
+  },
+  砂: (ctx) => {
+    _ipx(ctx, 2, 10, 12, 4, '#d8c48a');
+    _ipx(ctx, 3, 7, 10, 5, '#e0cf9a');
+    _ipx(ctx, 5, 5, 6, 4, '#ecdcae');
+  },
+  土: (ctx) => {
+    _ipx(ctx, 2, 9, 12, 5, '#5a3d24');
+    _ipx(ctx, 3, 6, 10, 5, '#6b4a2b');
+    _ipx(ctx, 5, 4, 6, 4, '#7a5a35');
+  },
+  リンゴ: (ctx) => {
+    _ipx(ctx, 4, 5, 8, 8, '#c94b4b');
+    _ipx(ctx, 9, 6, 3, 5, '#a83a3a');
+    _ipx(ctx, 5, 6, 3, 3, '#e06a6a');
+    _ipx(ctx, 7, 2, 2, 3, '#5a3d24');
+    _ipx(ctx, 9, 2, 3, 2, '#4fae5e');
+  },
+  野菜: (ctx) => { // にんじん
+    _ipx(ctx, 6, 6, 5, 8, '#e0902c');
+    _ipx(ctx, 7, 7, 3, 6, '#f0a83c');
+    _ipx(ctx, 8, 10, 1, 3, '#c9781c');
+    _ipx(ctx, 5, 1, 2, 6, '#4fae5e');
+    _ipx(ctx, 8, 0, 2, 6, '#3f8a44');
+    _ipx(ctx, 7, 2, 2, 5, '#57ab5c');
+  },
+  小麦: (ctx) => {
+    _ipx(ctx, 7, 6, 2, 9, '#8a6a2c');
+    _ipx(ctx, 3, 3, 3, 6, '#e0c23c');
+    _ipx(ctx, 10, 3, 3, 6, '#e0c23c');
+    _ipx(ctx, 6, 0, 4, 5, '#e6cc55');
+    _ipx(ctx, 4, 2, 2, 3, '#f0d060');
+    _ipx(ctx, 10, 2, 2, 3, '#f0d060');
+  },
+  パン: (ctx) => {
+    _ipx(ctx, 2, 7, 12, 6, '#c9954a');
+    _ipx(ctx, 3, 5, 10, 4, '#e0b06a');
+    _ipx(ctx, 5, 6, 6, 2, '#f0c888');
+    _ipx(ctx, 5, 9, 2, 2, '#a9793f');
+    _ipx(ctx, 9, 9, 2, 2, '#a9793f');
+  },
+  牛乳: (ctx) => { // 瓶
+    _ipx(ctx, 6, 1, 4, 3, '#e8e8e8');
+    _ipx(ctx, 5, 4, 6, 2, '#f5f5f2');
+    _ipx(ctx, 4, 6, 8, 8, '#f5f5f2');
+    _ipx(ctx, 4, 6, 8, 3, '#dfe8f0');
+    _ipx(ctx, 5, 7, 2, 2, '#ffffff');
+  },
+  牛肉: (ctx) => {
+    _ipx(ctx, 3, 4, 10, 8, '#b5544a');
+    _ipx(ctx, 4, 5, 8, 3, '#d97a6e');
+    _ipx(ctx, 5, 9, 6, 2, '#f5f0e0');
+    _ipx(ctx, 4, 4, 2, 8, '#8a3a32');
+  },
+  豚肉: (ctx) => {
+    _ipx(ctx, 3, 4, 10, 8, '#e8a0a8');
+    _ipx(ctx, 4, 5, 8, 3, '#f0c0c6');
+    _ipx(ctx, 5, 9, 6, 2, '#f5f0e0');
+    _ipx(ctx, 4, 4, 2, 8, '#c97a82');
+  },
+  鶏肉: (ctx) => {
+    _ipx(ctx, 4, 5, 8, 7, '#e8c4a0');
+    _ipx(ctx, 5, 6, 6, 3, '#f0dcc0');
+    _ipx(ctx, 6, 3, 4, 3, '#f5e6c8');
+    _ipx(ctx, 6, 10, 4, 2, '#d9a878');
+  },
+  羊肉: (ctx) => {
+    _ipx(ctx, 3, 4, 10, 8, '#c46a5a');
+    _ipx(ctx, 4, 5, 8, 3, '#dc8a7a');
+    _ipx(ctx, 5, 9, 6, 2, '#f5f0e0');
+  },
+  魚: (ctx) => {
+    _ipx(ctx, 3, 6, 8, 4, '#c9d4e0');
+    _ipx(ctx, 10, 5, 4, 6, '#a8b8c9');
+    _ipx(ctx, 4, 7, 3, 2, '#e8eef2');
+    _ipx(ctx, 5, 7, 1, 1, '#2b2b2b');
+    _ipx(ctx, 3, 7, 2, 2, '#8a9ba8');
+  },
+  卵: (ctx) => {
+    _ipx(ctx, 5, 4, 6, 9, '#f5e6c8');
+    _ipx(ctx, 6, 3, 4, 2, '#faf0d8');
+    _ipx(ctx, 6, 9, 3, 3, '#e8d4a8');
+  },
+  羽: (ctx) => {
+    _ipx(ctx, 7, 2, 2, 10, '#e8e8e8');
+    _ipx(ctx, 5, 3, 6, 6, '#f5f0e0');
+    _ipx(ctx, 6, 4, 4, 4, '#ffffff');
+    _ipx(ctx, 7, 11, 2, 3, '#d9c9a8');
+  },
+  羊毛: (ctx) => {
+    _ipx(ctx, 3, 5, 10, 8, '#f0ece0');
+    _ipx(ctx, 4, 3, 4, 4, '#f5f2e8');
+    _ipx(ctx, 9, 3, 4, 4, '#f5f2e8');
+    _ipx(ctx, 5, 10, 6, 2, '#dcd6c4');
+  },
+  牙: (ctx) => {
+    _ipx(ctx, 7, 2, 3, 10, '#eae4d0');
+    _ipx(ctx, 8, 2, 1, 10, '#f5f0e0');
+    _ipx(ctx, 7, 11, 3, 2, '#c9c0a0');
+  },
+  虎皮: (ctx) => {
+    _ipx(ctx, 2, 3, 12, 10, '#e0902c');
+    _ipx(ctx, 4, 4, 2, 3, '#2b2b2b');
+    _ipx(ctx, 8, 5, 2, 3, '#2b2b2b');
+    _ipx(ctx, 5, 9, 2, 3, '#2b2b2b');
+    _ipx(ctx, 10, 8, 2, 3, '#2b2b2b');
+  },
+  鉄鉱石: (ctx) => {
+    _ipx(ctx, 3, 5, 10, 8, '#5c5c5c');
+    _ipx(ctx, 4, 4, 8, 6, '#6e6e6e');
+    _ipx(ctx, 6, 6, 3, 3, '#a08070');
+    _ipx(ctx, 9, 8, 2, 2, '#a08070');
+  },
+  鉄: (ctx) => {
+    _ipx(ctx, 3, 5, 10, 6, '#c0c0c8');
+    _ipx(ctx, 4, 6, 8, 4, '#e0e0e8');
+    _ipx(ctx, 3, 5, 10, 1, '#f0f0f8');
+  },
+  金鉱石: (ctx) => {
+    _ipx(ctx, 3, 5, 10, 8, '#5c5c5c');
+    _ipx(ctx, 4, 4, 8, 6, '#6e6e6e');
+    _ipx(ctx, 6, 6, 3, 3, '#e6c85c');
+    _ipx(ctx, 9, 8, 2, 2, '#e6c85c');
+  },
+  金: (ctx) => {
+    _ipx(ctx, 3, 5, 10, 6, '#c9a13c');
+    _ipx(ctx, 4, 6, 8, 4, '#e6c85c');
+    _ipx(ctx, 3, 5, 10, 1, '#f5e07a');
+  },
+  水: (ctx) => {
+    _ipx(ctx, 5, 3, 6, 10, '#4a8ac9');
+    _ipx(ctx, 6, 4, 4, 8, '#6ba8e0');
+    _ipx(ctx, 7, 5, 2, 3, '#a8d0f0');
+  },
+};
+
 function buildItemIcon(itemId) {
   const size = 16;
   const cnv = document.createElement('canvas');
@@ -127,6 +303,11 @@ function buildItemIcon(itemId) {
   ctx.imageSmoothingEnabled = false;
 
   const dynDef = DYNAMIC_ITEM_REGISTRY[itemId];
+  if (!dynDef && SPECIFIC_ITEM_ICONS[itemId]) {
+    SPECIFIC_ITEM_ICONS[itemId](ctx);
+    return cnv;
+  }
+
   const base = (dynDef && dynDef.color) || MATERIAL_BASE_COLORS[itemId] || '#999999';
   const light = shadeColor(base, 55);
   const dark = shadeColor(base, -55);
