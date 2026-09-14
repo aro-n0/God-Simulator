@@ -14,6 +14,7 @@ const STATES = {
   SOCIAL: 'SOCIAL',
   STEAL: 'STEAL',
   CULT_TASK: 'CULT_TASK',
+  STORE: 'STORE',
 };
 
 const EMOTES = {
@@ -264,7 +265,7 @@ class Character {
       const stored = addToSlotArray(nearChest.chestSlots, item, disposableSlot.count);
       if (stored > 0) {
         this.removeFromInventory(item, stored);
-        this._setEmote('チェストにしまった');
+        this._setEmote('備蓄庫にしまった');
         return;
       }
     }
@@ -422,6 +423,20 @@ class Character {
         this.prayCount += 1;
         this._setEmote('祈っている');
         if (this.prayCount >= 5 && !this.titleTags.includes('信心深い')) this.titleTags.push('信心深い');
+      } else if (
+        this._isInventoryFull() &&
+        this.state !== STATES.STORE &&
+        this.state !== STATES.EAT &&
+        this.state !== STATES.PRAY
+      ) {
+        // 所持品が満杯: 採取/狩猟/拾得を止め、備蓄庫へ荷物を降ろしに行く
+        const storage = this._findNearestStorage();
+        if (storage) {
+          this.gatherTarget = null;
+          this.storeTarget = storage;
+          this.state = STATES.STORE;
+          this._setEmote('備蓄庫へ荷物を降ろしに行く');
+        }
       }
     }
 
@@ -438,6 +453,7 @@ class Character {
       case STATES.SOCIAL: this._updateAction(dt, ['交流中']); break;
       case STATES.STEAL: this._updateAction(dt, ['こっそり…']); break;
       case STATES.CULT_TASK: this._updateCultTask(dt); break;
+      case STATES.STORE: this._updateStore(dt, moveSpeedMul); break;
     }
     this.stamina = Math.max(0, Math.min(100, this.stamina));
     this.hp = Math.max(0, Math.min(100, this.hp));
@@ -486,6 +502,48 @@ class Character {
     }
   }
 
+  _isInventoryFull() {
+    return this.inventorySlots.every((s) => s !== null);
+  }
+
+  // 自村の備蓄庫を優先し、なければ最寄りの備蓄庫を探す
+  _findNearestStorage() {
+    let best = null, bestDist = Infinity;
+    const village = this.affiliation && this.map.villages ? this.map.villages[this.affiliation] : null;
+    for (const b of this.map.buildings) {
+      if (b.category !== 'chest') continue;
+      let d = this.distTo(b.x, b.y);
+      if (village && village.centerX != null) {
+        const inOwnVillage = Math.hypot(b.x - village.centerX, b.y - village.centerY) <= village.radius;
+        if (inOwnVillage) d -= 1000; // 自村の備蓄庫を強く優先
+      }
+      if (d < bestDist) { best = b; bestDist = d; }
+    }
+    return best;
+  }
+
+  _updateStore(dt, moveSpeedMul) {
+    const storage = this.storeTarget;
+    if (!storage || !this.map.buildings.includes(storage)) {
+      this.storeTarget = null;
+      this.state = STATES.WANDER;
+      return;
+    }
+    const arrived = this._moveToward(storage.x, storage.y, dt, moveSpeedMul, 1.2);
+    if (arrived) {
+      // 食料・装備を残し、それ以外の素材を可能な限り備蓄庫へ格納する
+      for (const slot of this.inventorySlots.slice()) {
+        if (!slot) continue;
+        if (FOOD_VALUES[slot.item] || isEquipment(slot.item)) continue;
+        const stored = addToSlotArray(storage.chestSlots, slot.item, slot.count);
+        if (stored > 0) this.removeFromInventory(slot.item, stored);
+      }
+      this._setEmote('荷物を備蓄庫に降ろした');
+      this.storeTarget = null;
+      this.state = STATES.WANDER;
+    }
+  }
+
   _setEmote(text) {
     this.emote = text;
     this.emoteTimer = 3;
@@ -500,21 +558,24 @@ class Character {
       return;
     }
 
-    // 近くに落ちているアイテムがあれば拾う(ポイ捨てされた物を他人が拾得可能に)
-    const groundIdx = this.map.groundItems.findIndex((g) => this.distTo(g.x, g.y) < 1.2);
-    if (groundIdx !== -1) {
-      const g = this.map.groundItems[groundIdx];
-      const picked = this.addToInventory(g.item, g.count);
-      if (picked > 0) {
-        this.map.groundItems.splice(groundIdx, 1);
-        this._setEmote('何かを拾った');
+    // 近くに落ちているアイテムがあれば拾う(ポイ捨てされた物を他人が拾得可能に)。満杯時は拾わない
+    const inventoryFull = this._isInventoryFull();
+    if (!inventoryFull) {
+      const groundIdx = this.map.groundItems.findIndex((g) => this.distTo(g.x, g.y) < 1.2);
+      if (groundIdx !== -1) {
+        const g = this.map.groundItems[groundIdx];
+        const picked = this.addToInventory(g.item, g.count);
+        if (picked > 0) {
+          this.map.groundItems.splice(groundIdx, 1);
+          this._setEmote('何かを拾った');
+        }
       }
     }
 
     // 超巨大樹は伐採できないが、近くを探索すると稀に伝説の枝が見つかる
     if (this.map.giantTreeCenter && !this.map.isGiantTreeFullyScorched()) {
       const gt = this.map.giantTreeCenter;
-      if (this.distTo(gt.x, gt.y) < 8 && Math.random() < 0.002) {
+      if (!inventoryFull && this.distTo(gt.x, gt.y) < 8 && Math.random() < 0.002) {
         if (this.addToInventory('伝説の枝', 1) > 0) this._setEmote('伝説の枝を見つけた！');
       }
       // 超巨大樹への放火は人間の意図的な行動によってのみ発生する(自然発火・自動燃焼はしない)
@@ -534,20 +595,22 @@ class Character {
       if (dimFire && Math.random() < 0.05) { dimFire.lit = true; this._setEmote('焚き火に火を灯した'); }
     }
 
-    // 浅瀬漁: 資格不要で誰でも手づかみによる魚の獲得が可能
-    if (this.map.isShallowWaterTile(this.x, this.y) && Math.random() < 0.01) {
+    // 浅瀬漁: 資格不要で誰でも手づかみによる魚の獲得が可能(満杯時は行わない)
+    if (!inventoryFull && this.map.isShallowWaterTile(this.x, this.y) && Math.random() < 0.01) {
       if (this.addToInventory('魚', 1) > 0) this._setEmote('魚を手づかみで捕まえた');
     }
 
-    // 空腹なら食料源を優先探索、平常時は木/石などの資源探索
+    // 空腹なら食料源を優先探索、平常時は木/石などの資源探索(満杯時は新規の採取・狩猟対象を探さない)
     let target = null;
     let isFood = false;
-    if (this.hunger < 55) {
-      target = this.findFoodSource(14);
-      isFood = !!target;
-    }
-    if (!target && Math.random() < 0.02) {
-      target = this.findNearbyResource(12, null);
+    if (!inventoryFull) {
+      if (this.hunger < 55) {
+        target = this.findFoodSource(14);
+        isFood = !!target;
+      }
+      if (!target && Math.random() < 0.02) {
+        target = this.findNearbyResource(12, null);
+      }
     }
     if (target) {
       this.gatherTarget = target;
