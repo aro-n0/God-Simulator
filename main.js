@@ -84,7 +84,7 @@ class Game {
     // 時間(速度倍率で進行が変わる)
     this.speedMultiplier = 1;
     this.dayClock = 6 * 60; // 朝から開始
-    this.currentDay = 1;
+    this.currentDay = config.currentDay != null ? config.currentDay : 1;
     this.isNight = false;
 
     // 社会システムの間引きタイマー
@@ -209,6 +209,7 @@ class Game {
       groundItems: this.map.groundItems,
       villages: this.map.villages,
       dynamicItemRegistry: DYNAMIC_ITEM_REGISTRY,
+      currentDay: this.currentDay,
     });
   }
 
@@ -700,7 +701,7 @@ class Game {
     const primary = entries.filter((e) => primaryIds.has(e.id)).slice(0, 5);
     const extra = entries.filter((e) => !primaryIds.has(e.id));
 
-    const label = (e) => `${e.name}(${e.relationType || '知人'} 愛${e.love}/尊${e.respect}/怨${e.grudge})`;
+    const label = (e) => `${e.name}(${e.relationType || '知人'} 愛${Math.round(e.love)}/尊${Math.round(e.respect)}/怨${Math.round(e.grudge)})`;
     const fillRow = (id, arr) => {
       const el = document.getElementById(id);
       el.innerHTML = '';
@@ -968,7 +969,7 @@ class Game {
       if (maxAllowed < radius) radius = Math.max(4, maxAllowed);
     }
     if (!this.map.villages) this.map.villages = {};
-    this.map.villages[name] = { color: this._pickVillageColor(), centerX: cx, centerY: cy, radius };
+    this.map.villages[name] = { color: this._pickVillageColor(), centerX: cx, centerY: cy, radius, baseRadius: radius, foundedDay: this.currentDay };
 
     assignOrUpdateMayor(cluster, alive, name, this.map);
     this._spawnInitialVillageBuildings(name, cx, cy, cluster);
@@ -998,7 +999,7 @@ class Game {
     });
 
     this.map.buildings.push({
-      id: idBase + 'chest', type: 'chest', category: 'chest', theme: 'wood', label: '共有チェスト',
+      id: idBase + 'chest', type: 'chest', category: 'chest', theme: 'wood', label: '共有備蓄庫',
       x: cx + 1.2, y: cy, ownerId: owner.id, ownerName: owner.params.name, constructedAtDay: day,
       chestSlots: new Array(60).fill(null),
     });
@@ -1013,7 +1014,34 @@ class Game {
     });
   }
 
-  // 家の入居ルール: 1軒最大8人。伴侶または親愛度(Love)の高い相手が住む家にのみ入居できる
+  // 動的領土拡張: 人口・経過年数・建造物数に応じて近隣の未領有タイルへジワジワと拡大する
+  _growVillageTerritories() {
+    const names = Object.keys(this.map.villages || {});
+    for (const name of names) {
+      const v = this.map.villages[name];
+      if (v.centerX == null) continue;
+      const population = this.characters.filter((c) => c.affiliation === name).length;
+      const buildingCount = this.map.buildings.filter((b) => Math.hypot(b.x - v.centerX, b.y - v.centerY) <= (v.radius || v.baseRadius) + 2).length;
+      const yearsSinceFounding = Math.max(0, this.currentDay - (v.foundedDay || this.currentDay));
+
+      let targetRadius = (v.baseRadius || v.radius) + population * 0.4 + yearsSinceFounding * 0.15 + buildingCount * 0.3;
+
+      // 他村の領土と絶対に重ならないよう、隣接村までの距離を上限にする
+      for (const otherName of names) {
+        if (otherName === name) continue;
+        const other = this.map.villages[otherName];
+        if (other.centerX == null) continue;
+        const d = Math.hypot(other.centerX - v.centerX, other.centerY - v.centerY);
+        const maxAllowed = d - (other.radius || other.baseRadius || 0) - 2;
+        if (maxAllowed < targetRadius) targetRadius = Math.max(v.baseRadius || 4, maxAllowed);
+      }
+
+      // 一気に広がらず、じわじわと近づけていく
+      if (v.radius < targetRadius) v.radius = Math.min(targetRadius, v.radius + 0.02);
+      else if (v.radius > targetRadius) v.radius = Math.max(targetRadius, v.radius - 0.05);
+    }
+  }
+
   _updateHousing() {
     const houses = this.map.buildings.filter((b) => b.category === 'house' || b.category === 'large_house');
     const residentOf = (id) => houses.find((h) => h.residents && h.residents.includes(id));
@@ -1089,6 +1117,7 @@ class Game {
       if (this._socialTimer <= 0) { this._socialTimer = 3; this._updateSocialSystems(); }
       this._villageTimer -= dt;
       if (this._villageTimer <= 0) { this._villageTimer = 15; this._updateVillages(); }
+      this._growVillageTerritories();
       this._codexTimer -= dt;
       if (this._codexTimer <= 0) { this._codexTimer = 5; this._updateCodexUnlocks(); }
     }
@@ -1170,13 +1199,6 @@ class Game {
             ctx.fillRect(Math.round(screen.x), Math.round(screen.y), Math.ceil(ts) + 1, Math.ceil(ts) + 1);
           }
         }
-        // はっきりとした境界線
-        const centerScreen = this.camera.worldToScreen(v.centerX * TILE_SIZE, v.centerY * TILE_SIZE);
-        ctx.strokeStyle = v.color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(centerScreen.x, centerScreen.y, v.radius * ts, 0, Math.PI * 2);
-        ctx.stroke();
       }
     }
 
